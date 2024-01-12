@@ -1,18 +1,11 @@
 name: Branch Build
 
 on:
-  pull_request:
-    types:
-      - closed
-    branches:
-      - master
-      - preview
-      - qa
-      - develop
-      - release-*
-  release:
-    types: [released, prereleased]
-
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'preview'
+        required: true
 env:
   TARGET_BRANCH: ${{ github.event.pull_request.base.ref || github.event.release.target_commitish }}
 
