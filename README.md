@@ -13,7 +13,7 @@
 <a href="https://discord.com/invite/A92xrEGCge">
 <img alt="Discord online members" src="https://img.shields.io/discord/1031547764020084846?color=5865F2&label=Discord&style=for-the-badge" />
 </a>
-<img alt="Commit activity per month" src="https://img.shields.io/github/commit-activity/m/makeplane/plane?style=for-the-badge" />
+<img alt="Commit activity per month" src="https://img.shields.io/github/commit-activity/m/etaxi341/planeplus?style=for-the-badge" />
 </p>
 
 <p>
@@ -49,7 +49,7 @@ Development system must have docker engine installed and running.
 
 Setting up local environment is extremely easy and straight forward. Follow the below step and you will be ready to contribute
 
-1. Clone the code locally using `git clone https://github.com/makeplane/plane.git`
+1. Clone the code locally using `git clone https://github.com/etaxi341/planeplus.git`
 1. Switch to the code folder `cd plane`
 1. Create your feature or fix branch you plan to work on using `git checkout -b <feature-branch-name>`
 1. Open terminal and run `./setup.sh`
@@ -140,7 +140,7 @@ For self hosting environment setup, visit the [Self Hosting](https://docs.plane.
 
 For full documentation, visit [docs.plane.so](https://docs.plane.so/)
 
-To see how to Contribute, visit [here](https://github.com/makeplane/plane/blob/master/CONTRIBUTING.md).
+To see how to Contribute, visit [here](https://github.com/etaxi341/planeplus/blob/master/CONTRIBUTING.md).
 
 ## ❤️ Community
 
@@ -148,7 +148,7 @@ The Plane community can be found on GitHub Discussions, where you can ask questi
 
 To chat with other community members you can join the [Plane Discord](https://discord.com/invite/A92xrEGCge).
 
-Our [Code of Conduct](https://github.com/makeplane/plane/blob/master/CODE_OF_CONDUCT.md) applies to all Plane community channels.
+Our [Code of Conduct](https://github.com/etaxi341/planeplus/blob/master/CODE_OF_CONDUCT.md) applies to all Plane community channels.
 
 ## ⛓️ Security
 
