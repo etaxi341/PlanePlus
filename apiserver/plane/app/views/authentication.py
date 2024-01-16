@@ -206,6 +206,7 @@ class SignInEndpoint(BaseAPIView):
                 user.token_updated_at = timezone.now()
                 user.save()
 
+        user = User.objects.filter(email=email).first()
         # settings last active for the user
         user.is_active = True
         user.last_active = timezone.now()
