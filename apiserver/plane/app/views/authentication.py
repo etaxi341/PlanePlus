@@ -160,19 +160,28 @@ class SignInEndpoint(BaseAPIView):
             )
 
         # Get the user
-        user = authenticate(request, username=email, password=password)
-
+        ldap_user = authenticate(request, username=email, password=password)
+        if not ldap_user:
+            return Response(
+                {"error": "Authentication for User failed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         # Check if the user already exists in your database.
         if not User.objects.filter(email=email).exists():
-            # If the user does not exist, we create them.
-            ldap_backend = LDAPBackend()
-            ldap_user = ldap_backend.populate_user(email)
-            ldap_backend.get_or_create_user(username=email, ldap_user=ldap_user)
+            for dn, attributes in ldap_user:
+                user = User.objects.create(email=email, username=uuid.uuid4().hex)
+                user.set_password(uuid.uuid4().hex)
+                user.first_name = attributes['givenName'][0]
+                user.last_name = attributes['sn'][0]
 
-            # Filling in the first name and last name from the LDAP result.
-            user.first_name = ldap_user.attrs['givenName'][0]
-            user.last_name = ldap_user.attrs['sn'][0]  # 'sn' is typically used for surname
-            user.save()
+                # settings last actives for the user
+                user.is_password_autoset = False
+                user.last_active = timezone.now()
+                user.last_login_time = timezone.now()
+                user.last_login_ip = request.META.get("REMOTE_ADDR")
+                user.last_login_uagent = request.META.get("HTTP_USER_AGENT")
+                user.token_updated_at = timezone.now()
+                user.save()
 
         # settings last active for the user
         user.is_active = True
