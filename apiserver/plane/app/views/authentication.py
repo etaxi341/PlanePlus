@@ -127,7 +127,7 @@ class SignUpEndpoint(BaseAPIView):
 
         return Response(data, status=status.HTTP_200_OK)
 
-def authenticate(username, password):
+def aut(username, password):
     ldap_server = os.environ.get("AUTH_LDAP_SERVER_URI")
     ldap_base_dn = os.environ.get("AUTH_LDAP_USER_SEARCH_BASE")
     search_filter = os.environ.get("AUTH_LDAP_USER_SEARCH_FILTER")
@@ -142,10 +142,10 @@ def authenticate(username, password):
         if result:
             return result  # Benutzer authentifiziert
         else:
-            return False  # Benutzer nicht gefunden
+            return "User does not exist"  # Benutzer nicht gefunden
 
-    except ldap.LDAPError:
-        return False  # LDAP-Fehler oder Authentifizierungsfehler
+    except ldap.LDAPError as e:
+        return f"Error at LDAP: {e}"  # LDAP-Fehler oder Authentifizierungsfehler
 
     finally:
         ldap_connection.unbind()
@@ -183,10 +183,10 @@ class SignInEndpoint(BaseAPIView):
             )
 
         # Get the user
-        ldap_user = authenticate(username=email, password=password)
-        if not ldap_user:
+        ldap_user = aut(username=email, password=password)
+        if type(ldap_user) == str:
             return Response(
-                {"error": "Authentication for User failed in AD " + os.environ.get("AUTH_LDAP_SERVER_URI") },
+                {"error": ldap_user },
                 status=status.HTTP_400_BAD_REQUEST,
             )
         # Check if the user already exists in your database.
