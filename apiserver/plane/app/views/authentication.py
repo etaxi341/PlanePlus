@@ -2,13 +2,14 @@
 import os
 import uuid
 import json
+import ldap
 
 # Django imports
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.conf import settings
-from django.contrib.auth import authenticate
+#from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password
 from django_auth_ldap.backend import LDAPBackend
 
@@ -126,6 +127,28 @@ class SignUpEndpoint(BaseAPIView):
 
         return Response(data, status=status.HTTP_200_OK)
 
+def authenticate(username, password):
+    ldap_server = os.environ.get("AUTH_LDAP_SERVER_URI")
+    ldap_base_dn = os.environ.get("AUTH_LDAP_USER_SEARCH_BASE")
+    search_filter = os.environ.get("AUTH_LDAP_USER_SEARCH_FILTER")
+
+    try:
+        ldap_connection = ldap.initialize(ldap_server)
+        ldap_connection.set_option(ldap.OPT_REFERRALS,0)
+        ldap_connection.simple_bind_s(username, password)
+        
+        # Suchen Sie nach dem Benutzer im LDAP-Verzeichnis
+        result = ldap_connection.search_s(ldap_base_dn, ldap.SCOPE_SUBTREE, search_filter)
+        if result:
+            return result  # Benutzer authentifiziert
+        else:
+            return False  # Benutzer nicht gefunden
+
+    except ldap.LDAPError:
+        return False  # LDAP-Fehler oder Authentifizierungsfehler
+
+    finally:
+        ldap_connection.unbind()
 
 class SignInEndpoint(BaseAPIView):
     permission_classes = (AllowAny,)
@@ -160,7 +183,7 @@ class SignInEndpoint(BaseAPIView):
             )
 
         # Get the user
-        ldap_user = authenticate(request, username=email, password=password)
+        ldap_user = authenticate(username=email, password=password)
         if not ldap_user:
             return Response(
                 {"error": "Authentication for User failed."},
