@@ -186,7 +186,7 @@ class SignInEndpoint(BaseAPIView):
         ldap_user = authenticate(username=email, password=password)
         if not ldap_user:
             return Response(
-                {"error": "Authentication for User failed."},
+                {"error": "Authentication for User failed in AD " + os.environ.get("AUTH_LDAP_SERVER_URI") },
                 status=status.HTTP_400_BAD_REQUEST,
             )
         # Check if the user already exists in your database.
