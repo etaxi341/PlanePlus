@@ -78,6 +78,8 @@ REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": ("django_filters.rest_framework.DjangoFilterBackend",),
 }
 
+LDAP_ENABLED = os.environ.get("LDAP_ENABLED", "0") == "1"
+
 if LDAP_ENABLED:
     AUTHENTICATION_BACKENDS = (
         'django_auth_ldap.backend.LDAPBackend',
