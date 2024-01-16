@@ -130,7 +130,7 @@ class SignUpEndpoint(BaseAPIView):
 def aut(username, password):
     ldap_server = os.environ.get("AUTH_LDAP_SERVER_URI")
     ldap_base_dn = os.environ.get("AUTH_LDAP_USER_SEARCH_BASE")
-    search_filter = os.environ.get("AUTH_LDAP_USER_SEARCH_FILTER")
+    search_filter = os.environ.get("AUTH_LDAP_USER_SEARCH_FILTER").replace("(user)", username)
 
     try:
         ldap_connection = ldap.initialize(ldap_server)
