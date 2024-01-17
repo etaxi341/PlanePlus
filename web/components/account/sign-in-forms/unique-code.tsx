@@ -13,7 +13,7 @@ import { Button, Input } from "@plane/ui";
 // helpers
 import { checkEmailValidity } from "helpers/string.helper";
 // types
-import { IEmailCheckData, IMagicSignInData } from "types/auth";
+import { IEmailCheckData, IMagicSignInData } from "@plane/types";
 // constants
 import { ESignInSteps } from "components/account";
 
@@ -25,6 +25,7 @@ type Props = {
   submitButtonLabel?: string;
   showTermsAndConditions?: boolean;
   updateUserOnboardingStatus: (value: boolean) => void;
+  handleEmailClear: () => void;
 };
 
 type TUniqueCodeFormValues = {
@@ -50,6 +51,7 @@ export const UniqueCodeForm: React.FC<Props> = (props) => {
     submitButtonLabel = "Continue",
     showTermsAndConditions = false,
     updateUserOnboardingStatus,
+    handleEmailClear,
   } = props;
   // states
   const [isRequestingNewCode, setIsRequestingNewCode] = useState(false);
@@ -183,11 +185,12 @@ export const UniqueCodeForm: React.FC<Props> = (props) => {
                   hasError={Boolean(errors.email)}
                   placeholder="orville.wright@frstflt.com"
                   className="h-[46px] w-full border border-onboarding-border-100 pr-12 placeholder:text-onboarding-text-400"
+                  disabled
                 />
                 {value.length > 0 && (
                   <XCircle
                     className="absolute right-3 h-5 w-5 stroke-custom-text-400 hover:cursor-pointer"
-                    onClick={() => onChange("")}
+                    onClick={handleEmailClear}
                   />
                 )}
               </div>
@@ -233,8 +236,8 @@ export const UniqueCodeForm: React.FC<Props> = (props) => {
               {resendTimerCode > 0
                 ? `Request new code in ${resendTimerCode}s`
                 : isRequestingNewCode
-                  ? "Requesting new code"
-                  : "Request new code"}
+                ? "Requesting new code"
+                : "Request new code"}
             </button>
           </div>
         </div>
