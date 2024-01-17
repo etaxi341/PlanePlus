@@ -2,37 +2,34 @@ import { useState } from "react";
 import { useRouter } from "next/router";
 import { CustomMenu } from "@plane/ui";
 import { Copy, Link, Pencil, Trash2 } from "lucide-react";
-// mobx store
-import { useMobxStore } from "lib/mobx/store-provider";
 // hooks
+import { useUser } from "hooks/store";
 import useToast from "hooks/use-toast";
 // components
 import { CreateUpdateIssueModal, DeleteIssueModal } from "components/issues";
 // helpers
 import { copyUrlToClipboard } from "helpers/string.helper";
 // types
-import { IIssue } from "types";
+import { TIssue } from "@plane/types";
 import { IQuickActionProps } from "../list/list-view-types";
-import { EProjectStore } from "store/command-palette.store";
 // constant
-import { EUserWorkspaceRoles } from "constants/workspace";
+import { EUserProjectRoles } from "constants/project";
 
 export const ProjectIssueQuickActions: React.FC<IQuickActionProps> = (props) => {
   const { issue, handleDelete, handleUpdate, customActionButton } = props;
-
+  // router
   const router = useRouter();
   const { workspaceSlug } = router.query;
-
   // states
   const [createUpdateIssueModal, setCreateUpdateIssueModal] = useState(false);
-  const [issueToEdit, setIssueToEdit] = useState<IIssue | null>(null);
+  const [issueToEdit, setIssueToEdit] = useState<TIssue | undefined>(undefined);
   const [deleteIssueModal, setDeleteIssueModal] = useState(false);
+  // store hooks
+  const {
+    membership: { currentProjectRole },
+  } = useUser();
 
-  const { user: userStore } = useMobxStore();
-
-  const { currentProjectRole } = userStore;
-
-  const isEditingAllowed = !!currentProjectRole && currentProjectRole >= EUserWorkspaceRoles.MEMBER;
+  const isEditingAllowed = !!currentProjectRole && currentProjectRole >= EUserProjectRoles.MEMBER;
 
   const { setToastAlert } = useToast();
 
@@ -46,6 +43,12 @@ export const ProjectIssueQuickActions: React.FC<IQuickActionProps> = (props) => 
     );
   };
 
+  const duplicateIssuePayload = {
+    ...issue,
+    name: `${issue.name} (copy)`,
+  };
+  delete duplicateIssuePayload.id;
+
   return (
     <>
       <DeleteIssueModal
@@ -56,24 +59,16 @@ export const ProjectIssueQuickActions: React.FC<IQuickActionProps> = (props) => 
       />
       <CreateUpdateIssueModal
         isOpen={createUpdateIssueModal}
-        handleClose={() => {
+        onClose={() => {
           setCreateUpdateIssueModal(false);
-          setIssueToEdit(null);
+          setIssueToEdit(undefined);
         }}
-        // pre-populate date only if not editing
-        prePopulateData={!issueToEdit && createUpdateIssueModal ? { ...issue, name: `${issue.name} (copy)` } : {}}
-        data={issueToEdit}
+        data={issueToEdit ?? duplicateIssuePayload}
         onSubmit={async (data) => {
-          if (issueToEdit && handleUpdate) handleUpdate({ ...issueToEdit, ...data });
+          if (issueToEdit && handleUpdate) await handleUpdate({ ...issueToEdit, ...data });
         }}
-        currentStore={EProjectStore.PROJECT}
       />
-      <CustomMenu
-        placement="bottom-start"
-        customButton={customActionButton}
-        ellipsis
-        menuButtonOnClick={(e) => e.stopPropagation()}
-      >
+      <CustomMenu placement="bottom-start" customButton={customActionButton} ellipsis>
         <CustomMenu.MenuItem
           onClick={(e) => {
             e.preventDefault();

@@ -20,9 +20,10 @@ from plane.app.serializers import (
     ModuleIssueSerializer,
     ModuleLinkSerializer,
     ModuleFavoriteSerializer,
-    IssueStateSerializer,
+    IssueSerializer,
+    ModuleUserPropertiesSerializer,
 )
-from plane.app.permissions import ProjectEntityPermission
+from plane.app.permissions import ProjectEntityPermission, ProjectLitePermission
 from plane.db.models import (
     Module,
     ModuleIssue,
@@ -32,6 +33,8 @@ from plane.db.models import (
     ModuleFavorite,
     IssueLink,
     IssueAttachment,
+    IssueSubscriber,
+    ModuleUserProperties,
 )
 from plane.bgtasks.issue_activites_task import issue_activity
 from plane.utils.grouper import group_results
@@ -54,7 +57,6 @@ class ModuleViewSet(WebhookMixin, BaseViewSet):
         )
 
     def get_queryset(self):
-
         subquery = ModuleFavorite.objects.filter(
             user=self.request.user,
             module_id=OuterRef("pk"),
@@ -136,7 +138,7 @@ class ModuleViewSet(WebhookMixin, BaseViewSet):
                     ),
                 )
             )
-            .order_by("-is_favorite","-created_at")
+            .order_by("-is_favorite", "-created_at")
         )
 
     def create(self, request, slug, project_id):
@@ -152,6 +154,14 @@ class ModuleViewSet(WebhookMixin, BaseViewSet):
             serializer = ModuleSerializer(module)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def list(self, request, slug, project_id):
+        queryset = self.get_queryset()
+        fields = [field for field in request.GET.get("fields", "").split(",") if field]
+        modules = ModuleSerializer(
+            queryset, many=True, fields=fields if fields else None
+        ).data
+        return Response(modules, status=status.HTTP_200_OK)
 
     def retrieve(self, request, slug, project_id, pk):
         queryset = self.get_queryset().get(pk=pk)
@@ -289,7 +299,6 @@ class ModuleIssueViewSet(WebhookMixin, BaseViewSet):
     webhook_event = "module_issue"
     bulk = True
 
-
     filterset_fields = [
         "issue__labels__id",
         "issue__assignees__id",
@@ -335,7 +344,6 @@ class ModuleIssueViewSet(WebhookMixin, BaseViewSet):
                 .annotate(count=Func(F("id"), function="Count"))
                 .values("count")
             )
-            .annotate(bridge_id=F("issue_module__id"))
             .filter(project_id=project_id)
             .filter(workspace__slug=slug)
             .select_related("project")
@@ -346,6 +354,8 @@ class ModuleIssueViewSet(WebhookMixin, BaseViewSet):
             .prefetch_related("labels")
             .order_by(order_by)
             .filter(**filters)
+            .annotate(cycle_id=F("issue_cycle__cycle_id"))
+            .annotate(module_id=F("issue_module__module_id"))
             .annotate(
                 link_count=IssueLink.objects.filter(issue=OuterRef("id"))
                 .order_by()
@@ -358,10 +368,18 @@ class ModuleIssueViewSet(WebhookMixin, BaseViewSet):
                 .annotate(count=Func(F("id"), function="Count"))
                 .values("count")
             )
+            .annotate(
+                is_subscribed=Exists(
+                    IssueSubscriber.objects.filter(
+                        subscriber=self.request.user, issue_id=OuterRef("id")
+                    )
+                )
+            )
         )
-        issues = IssueStateSerializer(issues, many=True, fields=fields if fields else None).data
-        issue_dict = {str(issue["id"]): issue for issue in issues}
-        return Response(issue_dict, status=status.HTTP_200_OK)
+        serializer = IssueSerializer(
+            issues, many=True, fields=fields if fields else None
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def create(self, request, slug, project_id, module_id):
         issues = request.data.get("issues", [])
@@ -439,25 +457,30 @@ class ModuleIssueViewSet(WebhookMixin, BaseViewSet):
             epoch=int(timezone.now().timestamp()),
         )
 
+        issues = self.get_queryset().values_list("issue_id", flat=True)
+
         return Response(
-            ModuleIssueSerializer(self.get_queryset(), many=True).data,
+            IssueSerializer(Issue.objects.filter(pk__in=issues), many=True).data,
             status=status.HTTP_200_OK,
         )
 
-    def destroy(self, request, slug, project_id, module_id, pk):
+    def destroy(self, request, slug, project_id, module_id, issue_id):
         module_issue = ModuleIssue.objects.get(
-            workspace__slug=slug, project_id=project_id, module_id=module_id, pk=pk
+            workspace__slug=slug,
+            project_id=project_id,
+            module_id=module_id,
+            issue_id=issue_id,
         )
         issue_activity.delay(
             type="module.activity.deleted",
             requested_data=json.dumps(
                 {
                     "module_id": str(module_id),
-                    "issues": [str(module_issue.issue_id)],
+                    "issues": [str(issue_id)],
                 }
             ),
             actor_id=str(request.user.id),
-            issue_id=str(module_issue.issue_id),
+            issue_id=str(issue_id),
             project_id=str(project_id),
             current_instance=None,
             epoch=int(timezone.now().timestamp()),
@@ -522,3 +545,41 @@ class ModuleFavoriteViewSet(BaseViewSet):
         )
         module_favorite.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ModuleUserPropertiesEndpoint(BaseAPIView):
+    permission_classes = [
+        ProjectLitePermission,
+    ]
+
+    def patch(self, request, slug, project_id, module_id):
+        module_properties = ModuleUserProperties.objects.get(
+            user=request.user,
+            module_id=module_id,
+            project_id=project_id,
+            workspace__slug=slug,
+        )
+
+        module_properties.filters = request.data.get(
+            "filters", module_properties.filters
+        )
+        module_properties.display_filters = request.data.get(
+            "display_filters", module_properties.display_filters
+        )
+        module_properties.display_properties = request.data.get(
+            "display_properties", module_properties.display_properties
+        )
+        module_properties.save()
+
+        serializer = ModuleUserPropertiesSerializer(module_properties)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def get(self, request, slug, project_id, module_id):
+        module_properties, _ = ModuleUserProperties.objects.get_or_create(
+            user=request.user,
+            project_id=project_id,
+            module_id=module_id,
+            workspace__slug=slug,
+        )
+        serializer = ModuleUserPropertiesSerializer(module_properties)
+        return Response(serializer.data, status=status.HTTP_200_OK)

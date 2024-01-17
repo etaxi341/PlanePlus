@@ -15,53 +15,61 @@ import { Loader } from "@plane/ui";
 // images
 import emptyIssue from "public/empty-state/issue.svg";
 // types
-import { IIssue } from "types";
-import { NextPageWithLayout } from "types/app";
+import { TIssue } from "@plane/types";
+import { NextPageWithLayout } from "lib/types";
 // fetch-keys
 import { PROJECT_ISSUES_ACTIVITY, ISSUE_DETAILS } from "constants/fetch-keys";
+import { observer } from "mobx-react-lite";
+import { useIssueDetail } from "hooks/store";
 
-const defaultValues: Partial<IIssue> = {
-  description: "",
+const defaultValues: Partial<TIssue> = {
+  // description: "",
   description_html: "",
   estimate_point: null,
-  issue_cycle: null,
-  issue_module: null,
+  cycle_id: null,
+  module_id: null,
   name: "",
   priority: "low",
-  start_date: null,
-  state: "",
-  target_date: null,
+  start_date: undefined,
+  state_id: "",
+  target_date: undefined,
 };
 
 // services
 const issueService = new IssueService();
 
-const IssueDetailsPage: NextPageWithLayout = () => {
+const IssueDetailsPage: NextPageWithLayout = observer(() => {
   // router
   const router = useRouter();
-  const { workspaceSlug, projectId, issueId } = router.query;
+  const { workspaceSlug, projectId, issueId: routeIssueId } = router.query;
+
+  const { peekIssue, fetchIssue } = useIssueDetail();
+  useEffect(() => {
+    if (!workspaceSlug || !projectId || !routeIssueId) return;
+    fetchIssue(workspaceSlug as string, projectId as string, routeIssueId as string);
+  }, [workspaceSlug, projectId, routeIssueId, fetchIssue]);
 
   const {
     data: issueDetails,
     mutate: mutateIssueDetails,
     error,
   } = useSWR(
-    workspaceSlug && projectId && issueId ? ISSUE_DETAILS(issueId as string) : null,
-    workspaceSlug && projectId && issueId
-      ? () => issueService.retrieve(workspaceSlug as string, projectId as string, issueId as string)
+    workspaceSlug && projectId && peekIssue?.issueId ? ISSUE_DETAILS(peekIssue?.issueId as string) : null,
+    workspaceSlug && projectId && peekIssue?.issueId
+      ? () => issueService.retrieve(workspaceSlug as string, projectId as string, peekIssue?.issueId as string)
       : null
   );
 
-  const { reset, control, watch } = useForm<IIssue>({
+  const { reset, control, watch } = useForm<TIssue>({
     defaultValues,
   });
 
   const submitChanges = useCallback(
-    async (formData: Partial<IIssue>) => {
-      if (!workspaceSlug || !projectId || !issueId) return;
+    async (formData: Partial<TIssue>) => {
+      if (!workspaceSlug || !projectId || !peekIssue?.issueId) return;
 
-      mutate<IIssue>(
-        ISSUE_DETAILS(issueId as string),
+      mutate<TIssue>(
+        ISSUE_DETAILS(peekIssue?.issueId as string),
         (prevData) => {
           if (!prevData) return prevData;
 
@@ -73,34 +81,34 @@ const IssueDetailsPage: NextPageWithLayout = () => {
         false
       );
 
-      const payload: Partial<IIssue> = {
+      const payload: Partial<TIssue> = {
         ...formData,
       };
 
-      delete payload.related_issues;
-      delete payload.issue_relations;
+      // delete payload.related_issues;
+      // delete payload.issue_relations;
 
       await issueService
-        .patchIssue(workspaceSlug as string, projectId as string, issueId as string, payload)
+        .patchIssue(workspaceSlug as string, projectId as string, peekIssue?.issueId as string, payload)
         .then(() => {
           mutateIssueDetails();
-          mutate(PROJECT_ISSUES_ACTIVITY(issueId as string));
+          mutate(PROJECT_ISSUES_ACTIVITY(peekIssue?.issueId as string));
         })
         .catch((e) => {
           console.error(e);
         });
     },
-    [workspaceSlug, issueId, projectId, mutateIssueDetails]
+    [workspaceSlug, peekIssue?.issueId, projectId, mutateIssueDetails]
   );
 
   useEffect(() => {
     if (!issueDetails) return;
 
-    mutate(PROJECT_ISSUES_ACTIVITY(issueId as string));
+    mutate(PROJECT_ISSUES_ACTIVITY(peekIssue?.issueId as string));
     reset({
       ...issueDetails,
     });
-  }, [issueDetails, reset, issueId]);
+  }, [issueDetails, reset, peekIssue?.issueId]);
 
   return (
     <>
@@ -115,7 +123,7 @@ const IssueDetailsPage: NextPageWithLayout = () => {
             onClick: () => router.push(`/${workspaceSlug}/projects/${projectId}/issues`),
           }}
         />
-      ) : issueDetails && projectId ? (
+      ) : issueDetails && projectId && peekIssue?.issueId ? (
         <div className="flex h-full overflow-hidden">
           <div className="h-full w-2/3 space-y-5 divide-y-2 divide-custom-border-300 overflow-y-auto p-5">
             <IssueMainContent issueDetails={issueDetails} submitChanges={submitChanges} />
@@ -147,7 +155,7 @@ const IssueDetailsPage: NextPageWithLayout = () => {
       )}
     </>
   );
-};
+});
 
 IssueDetailsPage.getLayout = function getLayout(page: ReactElement) {
   return (

@@ -1,15 +1,14 @@
 import { useEffect } from "react";
 import { observer } from "mobx-react-lite";
 import { Controller, useForm } from "react-hook-form";
-
-// mobx store
-import { useMobxStore } from "lib/mobx/store-provider";
+// hooks
+import { useLabel, useMember, useProjectState } from "hooks/store";
 // components
 import { AppliedFiltersList, FilterSelection, FiltersDropdown } from "components/issues";
 // ui
 import { Button, Input, TextArea } from "@plane/ui";
 // types
-import { IProjectView, IIssueFilterOptions } from "types";
+import { IProjectView, IIssueFilterOptions } from "@plane/types";
 // constants
 import { ISSUE_DISPLAY_FILTERS_BY_LAYOUT } from "constants/issue";
 
@@ -25,13 +24,17 @@ const defaultValues: Partial<IProjectView> = {
   description: "",
 };
 
-export const ProjectViewForm: React.FC<Props> = observer(({ handleFormSubmit, handleClose, data, preLoadedData }) => {
+export const ProjectViewForm: React.FC<Props> = observer((props) => {
+  const { handleFormSubmit, handleClose, data, preLoadedData } = props;
+  // store hooks
+  const { projectStates } = useProjectState();
   const {
-    projectLabel: { projectLabels },
-    projectState: projectStateStore,
-    projectMember: { projectMembers },
-  } = useMobxStore();
-
+    project: { projectLabels },
+  } = useLabel();
+  const {
+    project: { projectMemberIds },
+  } = useMember();
+  // form info
   const {
     control,
     formState: { errors, isSubmitting },
@@ -127,6 +130,7 @@ export const ProjectViewForm: React.FC<Props> = observer(({ handleFormSubmit, ha
                   hasError={Boolean(errors.name)}
                   placeholder="Title"
                   className="w-full resize-none text-xl focus:border-blue-400"
+                  tabIndex={1}
                 />
               )}
             />
@@ -144,6 +148,7 @@ export const ProjectViewForm: React.FC<Props> = observer(({ handleFormSubmit, ha
                   hasError={Boolean(errors?.description)}
                   value={value}
                   onChange={onChange}
+                  tabIndex={2}
                 />
               )}
             />
@@ -153,7 +158,7 @@ export const ProjectViewForm: React.FC<Props> = observer(({ handleFormSubmit, ha
               control={control}
               name="query_data"
               render={({ field: { onChange, value: filters } }) => (
-                <FiltersDropdown title="Filters">
+                <FiltersDropdown title="Filters" tabIndex={3}>
                   <FilterSelection
                     filters={filters ?? {}}
                     handleFiltersUpdate={(key, value) => {
@@ -175,8 +180,8 @@ export const ProjectViewForm: React.FC<Props> = observer(({ handleFormSubmit, ha
                     }}
                     layoutDisplayFiltersOptions={ISSUE_DISPLAY_FILTERS_BY_LAYOUT.issues.list}
                     labels={projectLabels ?? undefined}
-                    members={projectMembers?.map((m) => m.member) ?? undefined}
-                    states={projectStateStore.projectStates ?? undefined}
+                    memberIds={projectMemberIds ?? undefined}
+                    states={projectStates}
                   />
                 </FiltersDropdown>
               )}
@@ -189,25 +194,24 @@ export const ProjectViewForm: React.FC<Props> = observer(({ handleFormSubmit, ha
                 handleClearAllFilters={clearAllFilters}
                 handleRemoveFilter={handleRemoveFilter}
                 labels={projectLabels ?? []}
-                members={projectMembers?.map((m) => m.member) ?? []}
-                states={projectStateStore.projectStates ?? []}
+                states={projectStates}
               />
             </div>
           )}
         </div>
       </div>
       <div className="mt-5 flex justify-end gap-2">
-        <Button variant="neutral-primary" size="sm" onClick={handleClose}>
+        <Button variant="neutral-primary" size="sm" onClick={handleClose} tabIndex={4}>
           Cancel
         </Button>
-        <Button variant="primary" size="sm" type="submit">
+        <Button variant="primary" size="sm" type="submit" tabIndex={5}>
           {data
             ? isSubmitting
               ? "Updating View..."
               : "Update View"
             : isSubmitting
-              ? "Creating View..."
-              : "Create View"}
+            ? "Creating View..."
+            : "Create View"}
         </Button>
       </div>
     </form>

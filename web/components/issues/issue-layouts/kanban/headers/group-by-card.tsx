@@ -2,9 +2,8 @@ import React, { FC } from "react";
 import { useRouter } from "next/router";
 // components
 import { CustomMenu } from "@plane/ui";
-import { CreateUpdateIssueModal } from "components/issues/modal";
-import { CreateUpdateDraftIssueModal } from "components/issues/draft-issue-modal";
 import { ExistingIssuesListModal } from "components/core";
+import { CreateUpdateIssueModal, CreateUpdateDraftIssueModal } from "components/issues";
 // lucide icons
 import { Minimize2, Maximize2, Circle, Plus } from "lucide-react";
 // hooks
@@ -12,8 +11,8 @@ import useToast from "hooks/use-toast";
 // mobx
 import { observer } from "mobx-react-lite";
 // types
-import { IIssue, ISearchIssueResponse } from "types";
-import { EProjectStore } from "store/command-palette.store";
+import { TIssue, ISearchIssueResponse } from "@plane/types";
+import { TCreateModalStoreTypes } from "constants/issue";
 
 interface IHeaderGroupByCard {
   sub_group_by: string | null;
@@ -24,10 +23,10 @@ interface IHeaderGroupByCard {
   count: number;
   kanBanToggle: any;
   handleKanBanToggle: any;
-  issuePayload: Partial<IIssue>;
+  issuePayload: Partial<TIssue>;
   disableIssueCreation?: boolean;
-  currentStore?: EProjectStore;
-  addIssuesToView?: (issueIds: string[]) => Promise<IIssue>;
+  currentStore?: TCreateModalStoreTypes;
+  addIssuesToView?: (issueIds: string[]) => Promise<TIssue>;
 }
 
 export const HeaderGroupByCard: FC<IHeaderGroupByCard> = observer((props) => {
@@ -64,14 +63,15 @@ export const HeaderGroupByCard: FC<IHeaderGroupByCard> = observer((props) => {
 
     const issues = data.map((i) => i.id);
 
-    addIssuesToView &&
-      addIssuesToView(issues)?.catch(() => {
-        setToastAlert({
-          type: "error",
-          title: "Error!",
-          message: "Selected issues could not be added to the cycle. Please try again.",
-        });
+    try {
+      addIssuesToView && addIssuesToView(issues);
+    } catch (error) {
+      setToastAlert({
+        type: "error",
+        title: "Error!",
+        message: "Selected issues could not be added to the cycle. Please try again.",
       });
+    }
   };
 
   return (
@@ -84,12 +84,7 @@ export const HeaderGroupByCard: FC<IHeaderGroupByCard> = observer((props) => {
           fieldsToShow={["all"]}
         />
       ) : (
-        <CreateUpdateIssueModal
-          isOpen={isOpen}
-          handleClose={() => setIsOpen(false)}
-          prePopulateData={issuePayload}
-          currentStore={currentStore}
-        />
+        <CreateUpdateIssueModal isOpen={isOpen} onClose={() => setIsOpen(false)} data={issuePayload} />
       )}
       {renderExistingIssueModal && (
         <ExistingIssuesListModal

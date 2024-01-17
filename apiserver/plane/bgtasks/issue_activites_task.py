@@ -24,6 +24,7 @@ from plane.db.models import (
     IssueReaction,
     CommentReaction,
     IssueComment,
+    IssueSubscriber,
 )
 from plane.app.serializers import IssueActivitySerializer
 from plane.bgtasks.notification_task import notifications
@@ -112,8 +113,16 @@ def track_parent(
     epoch,
 ):
     if current_instance.get("parent") != requested_data.get("parent"):
-        old_parent = Issue.objects.filter(pk=current_instance.get("parent")).first() if current_instance.get("parent") is not None else None
-        new_parent = Issue.objects.filter(pk=requested_data.get("parent")).first() if requested_data.get("parent") is not None else None
+        old_parent = (
+            Issue.objects.filter(pk=current_instance.get("parent")).first()
+            if current_instance.get("parent") is not None
+            else None
+        )
+        new_parent = (
+            Issue.objects.filter(pk=requested_data.get("parent")).first()
+            if requested_data.get("parent") is not None
+            else None
+        )
 
         issue_activities.append(
             IssueActivity(
@@ -337,6 +346,7 @@ def track_assignees(
     added_assignees = requested_assignees - current_assignees
     dropped_assginees = current_assignees - requested_assignees
 
+    bulk_subscribers = []
     for added_asignee in added_assignees:
         assignee = User.objects.get(pk=added_asignee)
         issue_activities.append(
@@ -354,6 +364,28 @@ def track_assignees(
                 epoch=epoch,
             )
         )
+        bulk_subscribers.append(
+            IssueSubscriber(
+                subscriber_id=assignee.id,
+                issue_id=issue_id,
+                workspace_id=workspace_id,
+                project_id=project_id,
+                created_by_id=assignee.id,
+                updated_by_id=assignee.id,
+            )
+        )
+
+    # Create assignees subscribers to the issue and ignore if already
+    IssueSubscriber.objects.bulk_create(
+        bulk_subscribers, batch_size=10, ignore_conflicts=True
+    )
+
+    # Remove them from subscribers if they are dropped
+    IssueSubscriber.objects.filter(
+        workspace_id=workspace_id,
+        project_id=project_id,
+        subscriber_id__in=dropped_assginees,
+    ).delete()
 
     for dropped_assignee in dropped_assginees:
         assignee = User.objects.get(pk=dropped_assignee)
@@ -501,6 +533,18 @@ def create_issue_activity(
             epoch=epoch,
         )
     )
+    try:
+        # Add the user as a subscriber to the issue
+        IssueSubscriber.objects.create(
+            issue_id=issue_id,
+            project_id=project_id,
+            workspace_id=workspace_id,
+            subscriber_id=actor_id,
+            created_by_id=actor_id,
+            updated_by_id=actor_id,
+        )
+    except Exception as e:
+        pass
 
 
 def update_issue_activity(
@@ -714,7 +758,9 @@ def create_cycle_issue_activity(
         cycle = Cycle.objects.filter(
             pk=created_record.get("fields").get("cycle")
         ).first()
-        issue = Issue.objects.filter(pk=created_record.get("fields").get("issue")).first()
+        issue = Issue.objects.filter(
+            pk=created_record.get("fields").get("issue")
+        ).first()
         if issue:
             issue.updated_at = timezone.now()
             issue.save(update_fields=["updated_at"])
@@ -830,7 +876,9 @@ def create_module_issue_activity(
         module = Module.objects.filter(
             pk=created_record.get("fields").get("module")
         ).first()
-        issue = Issue.objects.filter(pk=created_record.get("fields").get("issue")).first()
+        issue = Issue.objects.filter(
+            pk=created_record.get("fields").get("issue")
+        ).first()
         if issue:
             issue.updated_at = timezone.now()
             issue.save(update_fields=["updated_at"])
@@ -1276,40 +1324,42 @@ def create_issue_relation_activity(
     current_instance = (
         json.loads(current_instance) if current_instance is not None else None
     )
-    if current_instance is None and requested_data.get("related_list") is not None:
-        for issue_relation in requested_data.get("related_list"):
-            if issue_relation.get("relation_type") == "blocked_by":
-                relation_type = "blocking"
-            else:
-                relation_type = issue_relation.get("relation_type")
-            issue = Issue.objects.get(pk=issue_relation.get("issue"))
+    if current_instance is None and requested_data.get("issues") is not None:
+        for related_issue in requested_data.get("issues"):
+            issue = Issue.objects.get(pk=related_issue)
             issue_activities.append(
                 IssueActivity(
-                    issue_id=issue_relation.get("related_issue"),
+                    issue_id=issue_id,
                     actor_id=actor_id,
                     verb="created",
                     old_value="",
                     new_value=f"{issue.project.identifier}-{issue.sequence_id}",
-                    field=relation_type,
+                    field=requested_data.get("relation_type"),
                     project_id=project_id,
                     workspace_id=workspace_id,
-                    comment=f"added {relation_type} relation",
-                    old_identifier=issue_relation.get("issue"),
+                    comment=f"added {requested_data.get('relation_type')} relation",
+                    old_identifier=related_issue,
                 )
             )
-            issue = Issue.objects.get(pk=issue_relation.get("related_issue"))
+            issue = Issue.objects.get(pk=issue_id)
             issue_activities.append(
                 IssueActivity(
-                    issue_id=issue_relation.get("issue"),
+                    issue_id=related_issue,
                     actor_id=actor_id,
                     verb="created",
                     old_value="",
                     new_value=f"{issue.project.identifier}-{issue.sequence_id}",
-                    field=f'{issue_relation.get("relation_type")}',
+                    field="blocking"
+                    if requested_data.get("relation_type") == "blocked_by"
+                    else (
+                        "blocked_by"
+                        if requested_data.get("relation_type") == "blocking"
+                        else requested_data.get("relation_type")
+                    ),
                     project_id=project_id,
                     workspace_id=workspace_id,
-                    comment=f'added {issue_relation.get("relation_type")} relation',
-                    old_identifier=issue_relation.get("related_issue"),
+                    comment=f'added {"blocking" if requested_data.get("relation_type") == "blocked_by" else ("blocked_by" if requested_data.get("relation_type") == "blocking" else requested_data.get("relation_type")),} relation',
+                    old_identifier=issue_id,
                     epoch=epoch,
                 )
             )
@@ -1329,43 +1379,44 @@ def delete_issue_relation_activity(
     current_instance = (
         json.loads(current_instance) if current_instance is not None else None
     )
-    if current_instance is not None and requested_data.get("related_list") is None:
-        if current_instance.get("relation_type") == "blocked_by":
-            relation_type = "blocking"
-        else:
-            relation_type = current_instance.get("relation_type")
-        issue = Issue.objects.get(pk=current_instance.get("issue"))
-        issue_activities.append(
-            IssueActivity(
-                issue_id=current_instance.get("related_issue"),
-                actor_id=actor_id,
-                verb="deleted",
-                old_value=f"{issue.project.identifier}-{issue.sequence_id}",
-                new_value="",
-                field=relation_type,
-                project_id=project_id,
-                workspace_id=workspace_id,
-                comment=f"deleted {relation_type} relation",
-                old_identifier=current_instance.get("issue"),
-                epoch=epoch,
-            )
+    issue = Issue.objects.get(pk=requested_data.get("related_issue"))
+    issue_activities.append(
+        IssueActivity(
+            issue_id=issue_id,
+            actor_id=actor_id,
+            verb="deleted",
+            old_value=f"{issue.project.identifier}-{issue.sequence_id}",
+            new_value="",
+            field=requested_data.get("relation_type"),
+            project_id=project_id,
+            workspace_id=workspace_id,
+            comment=f"deleted {requested_data.get('relation_type')} relation",
+            old_identifier=requested_data.get("related_issue"),
+            epoch=epoch,
         )
-        issue = Issue.objects.get(pk=current_instance.get("related_issue"))
-        issue_activities.append(
-            IssueActivity(
-                issue_id=current_instance.get("issue"),
-                actor_id=actor_id,
-                verb="deleted",
-                old_value=f"{issue.project.identifier}-{issue.sequence_id}",
-                new_value="",
-                field=f'{current_instance.get("relation_type")}',
-                project_id=project_id,
-                workspace_id=workspace_id,
-                comment=f'deleted {current_instance.get("relation_type")} relation',
-                old_identifier=current_instance.get("related_issue"),
-                epoch=epoch,
-            )
+    )
+    issue = Issue.objects.get(pk=issue_id)
+    issue_activities.append(
+        IssueActivity(
+            issue_id=requested_data.get("related_issue"),
+            actor_id=actor_id,
+            verb="deleted",
+            old_value=f"{issue.project.identifier}-{issue.sequence_id}",
+            new_value="",
+            field="blocking"
+            if requested_data.get("relation_type") == "blocked_by"
+            else (
+                "blocked_by"
+                if requested_data.get("relation_type") == "blocking"
+                else requested_data.get("relation_type")
+            ),
+            project_id=project_id,
+            workspace_id=workspace_id,
+            comment=f'deleted {requested_data.get("relation_type")} relation',
+            old_identifier=requested_data.get("related_issue"),
+            epoch=epoch,
         )
+    )
 
 
 def create_draft_issue_activity(

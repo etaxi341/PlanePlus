@@ -343,6 +343,7 @@ CELERY_IMPORTS = (
     "plane.bgtasks.issue_automation_task",
     "plane.bgtasks.exporter_expired_task",
     "plane.bgtasks.file_asset_task",
+    "plane.bgtasks.email_notification_task",
 )
 
 # Sentry Settings
@@ -366,7 +367,7 @@ if bool(os.environ.get("SENTRY_DSN", False)) and os.environ.get(
 
 # Application Envs
 PROXY_BASE_URL = os.environ.get("PROXY_BASE_URL", False)  # For External
-SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", False)
+
 FILE_SIZE_LIMIT = int(os.environ.get("FILE_SIZE_LIMIT", 5242880))
 
 # Unsplash Access key

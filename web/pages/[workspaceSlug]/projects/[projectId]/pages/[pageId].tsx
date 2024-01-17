@@ -1,17 +1,22 @@
 import React, { useEffect, useRef, useState, ReactElement, useCallback } from "react";
 import { useRouter } from "next/router";
+import { observer } from "mobx-react-lite";
 import useSWR, { MutatorOptions } from "swr";
 import { Controller, useForm } from "react-hook-form";
+import { Sparkle } from "lucide-react";
+import debounce from "lodash/debounce";
+// hooks
+import { useApplication, useIssues, useUser } from "hooks/store";
+import useToast from "hooks/use-toast";
+import useReloadConfirmations from "hooks/use-reload-confirmation";
 // services
 import { PageService } from "services/page.service";
 import { FileService } from "services/file.service";
-// hooks
-import useUser from "hooks/use-user";
-import debounce from "lodash/debounce";
-import { useMobxStore } from "lib/mobx/store-provider";
+import { IssueService } from "services/issue";
 // layouts
 import { AppLayout } from "layouts/app-layout";
 // components
+import { GptAssistantPopover } from "components/core";
 import { PageDetailsHeader } from "components/headers/page-details";
 import { EmptyState } from "components/common";
 // ui
@@ -20,20 +25,15 @@ import { Spinner } from "@plane/ui";
 // assets
 import emptyPage from "public/empty-state/page.svg";
 // helpers
-import { renderDateFormat } from "helpers/date-time.helper";
+import { renderFormattedPayloadDate } from "helpers/date-time.helper";
 // types
-import { NextPageWithLayout } from "types/app";
-import { IPage, IIssue } from "types";
+import { NextPageWithLayout } from "lib/types";
+import { IPage, TIssue } from "@plane/types";
 // fetch-keys
 import { PAGE_DETAILS, PROJECT_ISSUES_LIST } from "constants/fetch-keys";
-import { IssuePeekOverview } from "components/issues/peek-overview";
-import { IssueService } from "services/issue";
-import useToast from "hooks/use-toast";
-import useReloadConfirmations from "hooks/use-reload-confirmation";
-import { EUserWorkspaceRoles } from "constants/workspace";
-import { GptAssistantModal } from "components/core";
-import { Sparkle } from "lucide-react";
-import { observer } from "mobx-react-lite";
+// constants
+import { EUserProjectRoles } from "constants/project";
+import { EIssuesStoreType } from "constants/issue";
 
 // services
 const fileService = new FileService();
@@ -41,25 +41,31 @@ const pageService = new PageService();
 const issueService = new IssueService();
 
 const PageDetailsPage: NextPageWithLayout = observer(() => {
-  const {
-    projectIssues: { updateIssue },
-    appConfig: { envConfig },
-    user: { currentProjectRole },
-  } = useMobxStore();
-
-  const editorRef = useRef<any>(null);
-
+  // states
   const [isSubmitting, setIsSubmitting] = useState<"submitting" | "submitted" | "saved">("saved");
   const [gptModalOpen, setGptModal] = useState(false);
-
-  const { setShowAlert } = useReloadConfirmations();
+  // refs
+  const editorRef = useRef<any>(null);
+  // router
   const router = useRouter();
-  const { workspaceSlug, projectId, pageId, peekIssueId } = router.query;
+  const { workspaceSlug, projectId, pageId } = router.query;
+  // store hooks
+  const {
+    issues: { updateIssue },
+  } = useIssues(EIssuesStoreType.PROJECT);
+  const {
+    config: { envConfig },
+  } = useApplication();
+  const {
+    currentUser,
+    membership: { currentProjectRole },
+  } = useUser();
+  // toast alert
   const { setToastAlert } = useToast();
 
-  const { user } = useUser();
+  const { setShowAlert } = useReloadConfirmations();
 
-  const { handleSubmit, setValue, watch, getValues, control } = useForm<IPage>({
+  const { handleSubmit, setValue, watch, getValues, control, reset } = useForm<IPage>({
     defaultValues: { name: "", description_html: "" },
   });
 
@@ -101,15 +107,9 @@ const PageDetailsPage: NextPageWithLayout = observer(() => {
     }
   );
 
-  const handleUpdateIssue = (issueId: string, data: Partial<IIssue>) => {
-    if (!workspaceSlug || !projectId || !user) return;
-
-    updateIssue(workspaceSlug.toString(), projectId.toString(), issueId, data);
-  };
-
   const fetchIssue = async (issueId: string) => {
     const issue = await issueService.retrieve(workspaceSlug as string, projectId as string, issueId as string);
-    return issue as IIssue;
+    return issue as TIssue;
   };
 
   const issueWidgetClickAction = (issueId: string) => {
@@ -279,7 +279,7 @@ const PageDetailsPage: NextPageWithLayout = observer(() => {
     mutatePageDetailsHelper(
       pageService.archivePage(workspaceSlug.toString(), projectId.toString(), pageId.toString()),
       {
-        archived_at: renderDateFormat(new Date()),
+        archived_at: renderFormattedPayloadDate(new Date()),
       },
       ["description_html"],
       () =>
@@ -376,15 +376,15 @@ const PageDetailsPage: NextPageWithLayout = observer(() => {
   const isPageReadOnly =
     pageDetails?.is_locked ||
     pageDetails?.archived_at ||
-    (currentProjectRole && [EUserWorkspaceRoles.VIEWER, EUserWorkspaceRoles.GUEST].includes(currentProjectRole));
+    (currentProjectRole && [EUserProjectRoles.VIEWER, EUserProjectRoles.GUEST].includes(currentProjectRole));
 
-  const isCurrentUserOwner = pageDetails?.owned_by === user?.id;
+  const isCurrentUserOwner = pageDetails?.owned_by === currentUser?.id;
 
   const userCanDuplicate =
-    currentProjectRole && [EUserWorkspaceRoles.ADMIN, EUserWorkspaceRoles.MEMBER].includes(currentProjectRole);
-  const userCanArchive = isCurrentUserOwner || currentProjectRole === EUserWorkspaceRoles.ADMIN;
+    currentProjectRole && [EUserProjectRoles.ADMIN, EUserProjectRoles.MEMBER].includes(currentProjectRole);
+  const userCanArchive = isCurrentUserOwner || currentProjectRole === EUserProjectRoles.ADMIN;
   const userCanLock =
-    currentProjectRole && [EUserWorkspaceRoles.ADMIN, EUserWorkspaceRoles.MEMBER].includes(currentProjectRole);
+    currentProjectRole && [EUserProjectRoles.ADMIN, EUserProjectRoles.MEMBER].includes(currentProjectRole);
 
   return (
     <>
@@ -487,42 +487,35 @@ const PageDetailsPage: NextPageWithLayout = observer(() => {
                   )}
                 />
                 {projectId && envConfig?.has_openai_configured && (
-                  <>
-                    <button
-                      type="button"
-                      className="absolute right-[68px] top-2.5 flex items-center gap-1 rounded px-1.5 py-1 text-xs hover:bg-custom-background-90"
-                      onClick={() => setGptModal((prevData) => !prevData)}
-                    >
-                      <Sparkle className="h-4 w-4" />
-                      AI
-                    </button>
-                    <GptAssistantModal
+                  <div className="absolute right-[68px] top-2.5">
+                    <GptAssistantPopover
                       isOpen={gptModalOpen}
+                      projectId={projectId.toString()}
                       handleClose={() => {
-                        setGptModal(false);
+                        setGptModal((prevData) => !prevData);
+                        // this is done so that the title do not reset after gpt popover closed
+                        reset(getValues());
                       }}
-                      inset="top-9 right-[68px] !w-1/2 !max-h-[50%]"
-                      content=""
                       onResponse={(response) => {
                         handleAiAssistance(response);
                       }}
-                      projectId={projectId.toString()}
+                      placement="top-end"
+                      button={
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 rounded px-1.5 py-1 text-xs hover:bg-custom-background-90"
+                          onClick={() => setGptModal((prevData) => !prevData)}
+                        >
+                          <Sparkle className="h-4 w-4" />
+                          AI
+                        </button>
+                      }
+                      className="!min-w-[38rem]"
                     />
-                  </>
+                  </div>
                 )}
               </div>
             )}
-            <IssuePeekOverview
-              workspaceSlug={workspaceSlug as string}
-              projectId={projectId as string}
-              issueId={peekIssueId ? (peekIssueId as string) : ""}
-              isArchived={false}
-              handleIssue={async (issueToUpdate, action) => {
-                if (peekIssueId && typeof peekIssueId === "string") {
-                  handleUpdateIssue(peekIssueId, issueToUpdate);
-                }
-              }}
-            />
           </div>
         </div>
       ) : (

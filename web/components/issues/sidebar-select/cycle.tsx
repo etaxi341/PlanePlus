@@ -1,20 +1,20 @@
 import React, { useState } from "react";
 import { useRouter } from "next/router";
 import useSWR, { mutate } from "swr";
-// mobx store
-import { useMobxStore } from "lib/mobx/store-provider";
+// hooks
+import { useCycle, useIssues } from "hooks/store";
 // services
 import { CycleService } from "services/cycle.service";
 // ui
 import { ContrastIcon, CustomSearchSelect, Spinner, Tooltip } from "@plane/ui";
 // types
-import { IIssue } from "types";
+import { TIssue } from "@plane/types";
 // fetch-keys
 import { CYCLE_ISSUES, INCOMPLETE_CYCLES_LIST, ISSUE_DETAILS } from "constants/fetch-keys";
+import { EIssuesStoreType } from "constants/issue";
 
 type Props = {
-  issueDetail: IIssue | undefined;
-  projectId: string;
+  issueDetail: TIssue | undefined;
   handleCycleChange?: (cycleId: string) => void;
   disabled?: boolean;
   handleIssueUpdate?: () => void;
@@ -27,28 +27,27 @@ export const SidebarCycleSelect: React.FC<Props> = (props) => {
   const { issueDetail, disabled = false, handleIssueUpdate, handleCycleChange } = props;
   // router
   const router = useRouter();
-  const { workspaceSlug, projectId: _projectId, peekProjectId } = router.query;
+  const { workspaceSlug, projectId } = router.query;
   // mobx store
   const {
-    cycleIssues: { removeIssueFromCycle, addIssueToCycle },
-  } = useMobxStore();
+    issues: { removeIssueFromCycle, addIssueToCycle },
+  } = useIssues(EIssuesStoreType.CYCLE);
+  const { getCycleById } = useCycle();
 
   const [isUpdating, setIsUpdating] = useState(false);
-
-  const projectId = _projectId ?? peekProjectId;
 
   const { data: incompleteCycles } = useSWR(
     workspaceSlug && projectId ? INCOMPLETE_CYCLES_LIST(projectId as string) : null,
     workspaceSlug && projectId
-      ? () => cycleService.getCyclesWithParams(workspaceSlug as string, projectId as string, "incomplete")
+      ? () => cycleService.getCyclesWithParams(workspaceSlug as string, projectId as string) // FIXME, "incomplete")
       : null
   );
 
   const handleCycleStoreChange = async (cycleId: string) => {
-    if (!workspaceSlug || !issueDetail || !cycleId) return;
+    if (!workspaceSlug || !issueDetail || !cycleId || !projectId) return;
 
     setIsUpdating(true);
-    await addIssueToCycle(workspaceSlug.toString(), cycleId, [issueDetail.id], false, projectId?.toString())
+    await addIssueToCycle(workspaceSlug.toString(), projectId?.toString(), cycleId, [issueDetail.id])
       .then(async () => {
         handleIssueUpdate && (await handleIssueUpdate());
       })
@@ -57,11 +56,11 @@ export const SidebarCycleSelect: React.FC<Props> = (props) => {
       });
   };
 
-  const handleRemoveIssueFromCycle = (bridgeId: string, cycleId: string) => {
+  const handleRemoveIssueFromCycle = (cycleId: string) => {
     if (!workspaceSlug || !projectId || !issueDetail) return;
 
     setIsUpdating(true);
-    removeIssueFromCycle(workspaceSlug.toString(), projectId.toString(), cycleId, issueDetail.id, bridgeId)
+    removeIssueFromCycle(workspaceSlug.toString(), projectId.toString(), cycleId, issueDetail.id)
       .then(async () => {
         handleIssueUpdate && (await handleIssueUpdate());
         mutate(ISSUE_DETAILS(issueDetail.id));
@@ -69,7 +68,7 @@ export const SidebarCycleSelect: React.FC<Props> = (props) => {
         mutate(CYCLE_ISSUES(cycleId));
       })
       .catch((e) => {
-        console.log(e);
+        console.error(e);
       })
       .finally(() => {
         setIsUpdating(false);
@@ -89,25 +88,25 @@ export const SidebarCycleSelect: React.FC<Props> = (props) => {
     ),
   }));
 
-  const issueCycle = issueDetail?.issue_cycle;
+  const issueCycle = (issueDetail && issueDetail.cycle_id && getCycleById(issueDetail.cycle_id)) || undefined;
 
   const disableSelect = disabled || isUpdating;
 
   return (
     <div className="flex items-center gap-1">
       <CustomSearchSelect
-        value={issueCycle?.cycle_detail.id}
+        value={issueDetail?.cycle_id}
         onChange={(value: any) => {
-          value === issueCycle?.cycle_detail.id
-            ? handleRemoveIssueFromCycle(issueCycle?.id ?? "", issueCycle?.cycle ?? "")
+          value === issueDetail?.cycle_id
+            ? handleRemoveIssueFromCycle(issueDetail?.cycle_id ?? "")
             : handleCycleChange
-              ? handleCycleChange(value)
-              : handleCycleStoreChange(value);
+            ? handleCycleChange(value)
+            : handleCycleStoreChange(value);
         }}
         options={options}
         customButton={
           <div>
-            <Tooltip position="left" tooltipContent={`${issueCycle ? issueCycle.cycle_detail.name : "No cycle"}`}>
+            <Tooltip position="left" tooltipContent={`${issueCycle ? issueCycle?.name : "No cycle"}`}>
               <button
                 type="button"
                 className={`flex w-full items-center rounded bg-custom-background-80 px-2.5 py-0.5 text-xs ${
@@ -120,7 +119,7 @@ export const SidebarCycleSelect: React.FC<Props> = (props) => {
                   }`}
                 >
                   <span className="flex-shrink-0">{issueCycle && <ContrastIcon className="h-3.5 w-3.5" />}</span>
-                  <span className="truncate">{issueCycle ? issueCycle.cycle_detail.name : "No cycle"}</span>
+                  <span className="truncate">{issueCycle ? issueCycle?.name : "No cycle"}</span>
                 </span>
               </button>
             </Tooltip>
