@@ -1,36 +1,56 @@
 import { FC } from "react";
 import { Controller, useForm } from "react-hook-form";
 // ui
-import { ToggleSwitch } from "@plane/ui";
+import { Button } from "@plane/ui";
+// hooks
+import useToast from "hooks/use-toast";
+// services
+import { UserService } from "services/user.service";
+// types
+import { IUserEmailNotificationSettings } from "@plane/types";
 
-export interface EmailPreferenceValues {
-  email_notification: boolean;
-  property_change: boolean;
-  state_change: boolean;
-  issue_completed: boolean;
-  comment: boolean;
-  mention: boolean;
+interface IEmailNotificationFormProps {
+  data: IUserEmailNotificationSettings;
 }
 
-export const EmailNotificationForm: FC = () => {
+// services
+const userService = new UserService();
+
+export const EmailNotificationForm: FC<IEmailNotificationFormProps> = (props) => {
+  const { data } = props;
+  // toast
+  const { setToastAlert } = useToast();
   // form data
   const {
     handleSubmit,
     control,
-    formState: { isSubmitting },
-  } = useForm<EmailPreferenceValues>({
+    setValue,
+    formState: { isSubmitting, isDirty, dirtyFields },
+  } = useForm<IUserEmailNotificationSettings>({
     defaultValues: {
-      email_notification: true,
-      property_change: true,
-      state_change: true,
-      issue_completed: true,
-      comment: true,
-      mention: true,
+      ...data,
     },
   });
 
-  const onSubmit = async (formData: EmailPreferenceValues) => {
-    console.log(formData);
+  const onSubmit = async (formData: IUserEmailNotificationSettings) => {
+    // Get the dirty fields from the form data and create a payload
+    let payload = {};
+    Object.keys(dirtyFields).forEach((key) => {
+      payload = {
+        ...payload,
+        [key]: formData[key as keyof IUserEmailNotificationSettings],
+      };
+    });
+    await userService
+      .updateCurrentUserEmailNotificationSettings(payload)
+      .then(() =>
+        setToastAlert({
+          title: "Success",
+          type: "success",
+          message: "Email Notification Settings updated successfully",
+        })
+      )
+      .catch((err) => console.error(err));
   };
 
   return (
@@ -39,27 +59,18 @@ export const EmailNotificationForm: FC = () => {
         <div className="grow">
           <div className="pb-1 text-xl font-medium text-custom-text-100">Email notifications</div>
           <div className="text-sm font-normal text-custom-text-300">
-            Get emails to find out what’s going on when you’re not on Plane. You can turn them off anytime
+            Stay in the loop on Issues you are subscribed to. Enable this to get notified.
           </div>
         </div>
-        <div className="shrink-0">
-          <Controller
-            control={control}
-            name="email_notification"
-            render={({ field: { value, onChange } }) => (
-              <ToggleSwitch value={value} onChange={() => onChange(!value)} size="sm" />
-            )}
-          />
-        </div>
       </div>
-      <div className="pt-2 text-lg font-medium text-custom-text-100">Send me email notifications for:</div>
+      <div className="pt-2 text-lg font-medium text-custom-text-100">Notify me when:</div>
       {/* Notification Settings */}
       <div className="flex flex-col py-2">
         <div className="flex gap-2 items-center pt-6">
           <div className="grow">
             <div className="pb-1 text-base font-medium text-custom-text-100">Property changes</div>
             <div className="text-sm font-normal text-custom-text-300">
-              You’ll be notified about the property changes of an issue you’re a subscriber to you.
+              Notify me when issue’s properties like assignees, priority, estimates or anything else changes.
             </div>
           </div>
           <div className="shrink-0">
@@ -81,7 +92,7 @@ export const EmailNotificationForm: FC = () => {
           <div className="grow">
             <div className="pb-1 text-base font-medium text-custom-text-100">State Change</div>
             <div className="text-sm font-normal text-custom-text-300">
-              You’ll be notified about the state changes to the issues you’re a subscriber to
+              Notify me when the issues moves to a different state
             </div>
           </div>
           <div className="shrink-0">
@@ -92,7 +103,10 @@ export const EmailNotificationForm: FC = () => {
                 <input
                   type="checkbox"
                   checked={value}
-                  onChange={() => onChange(!value)}
+                  onChange={() => {
+                    if (!value) setValue("issue_completed", true);
+                    onChange(!value);
+                  }}
                   className="w-3.5 h-3.5 mx-2 cursor-pointer"
                 />
               )}
@@ -102,9 +116,7 @@ export const EmailNotificationForm: FC = () => {
         <div className="flex gap-2 items-center border-0 border-l-[3px] border-custom-border-300 pl-3">
           <div className="grow">
             <div className="pb-1 text-base font-medium text-custom-text-100">Issue completed</div>
-            <div className="text-sm font-normal text-custom-text-300">
-              We’ll notify you only with the issue is moved to completed state or state group
-            </div>
+            <div className="text-sm font-normal text-custom-text-300">Notify me only when an issue is completed</div>
           </div>
           <div className="shrink-0">
             <Controller
@@ -125,7 +137,7 @@ export const EmailNotificationForm: FC = () => {
           <div className="grow">
             <div className="pb-1 text-base font-medium text-custom-text-100">Comments</div>
             <div className="text-sm font-normal text-custom-text-300">
-              You will be notified when somebody comments on an issue you’re subscribed to
+              Notify me when someone leaves a comment on the issue
             </div>
           </div>
           <div className="shrink-0">
@@ -147,7 +159,7 @@ export const EmailNotificationForm: FC = () => {
           <div className="grow">
             <div className="pb-1 text-base font-medium text-custom-text-100">Mentions</div>
             <div className="text-sm font-normal text-custom-text-300">
-              You’ll be notified every time someone mentions you in any issue.
+              Notify me only when someone mentions me in the comments or description
             </div>
           </div>
           <div className="shrink-0">
@@ -166,11 +178,11 @@ export const EmailNotificationForm: FC = () => {
           </div>
         </div>
       </div>
-      {/* <div className="flex items-center py-12">
-        <Button variant="primary" onClick={handleSubmit(onSubmit)} loading={isSubmitting}>
+      <div className="flex items-center py-12">
+        <Button variant="primary" onClick={handleSubmit(onSubmit)} loading={isSubmitting} disabled={!isDirty}>
           {isSubmitting ? "Saving..." : "Save changes"}
         </Button>
-      </div> */}
+      </div>
     </>
   );
 };

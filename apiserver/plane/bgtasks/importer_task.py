@@ -55,20 +55,6 @@ def service_importer(service, importer_id):
                 ignore_conflicts=True,
             )
 
-            _ = UserNotificationPreference.objects.bulk_create(
-                [UserNotificationPreference(user=user) for user in new_users],
-                batch_size=100,
-            )
-
-            _ = [
-                send_welcome_slack.delay(
-                    str(user.id),
-                    True,
-                    f"{user.email} was imported to Plane from {service}",
-                )
-                for user in new_users
-            ]
-
             workspace_users = User.objects.filter(
                 email__in=[
                     user.get("email").strip().lower()
@@ -135,12 +121,17 @@ def service_importer(service, importer_id):
             repository_id = importer.metadata.get("repository_id", False)
 
             workspace_integration = WorkspaceIntegration.objects.get(
-                workspace_id=importer.workspace_id, integration__provider="github"
+                workspace_id=importer.workspace_id,
+                integration__provider="github",
             )
 
             # Delete the old repository object
-            GithubRepositorySync.objects.filter(project_id=importer.project_id).delete()
-            GithubRepository.objects.filter(project_id=importer.project_id).delete()
+            GithubRepositorySync.objects.filter(
+                project_id=importer.project_id
+            ).delete()
+            GithubRepository.objects.filter(
+                project_id=importer.project_id
+            ).delete()
 
             # Create a Label for github
             label = Label.objects.filter(
