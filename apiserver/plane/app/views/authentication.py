@@ -76,7 +76,7 @@ class SignUpEndpoint(BaseAPIView):
 
         # get configuration values
         # Get configuration values
-        ENABLE_SIGNUP, = get_configuration_value(
+        (ENABLE_SIGNUP,) = get_configuration_value(
             [
                 {
                     "key": "ENABLE_SIGNUP",
@@ -369,8 +369,10 @@ class MagicSignInEndpoint(BaseAPIView):
                 user.save()
 
                 # Check if user has any accepted invites for workspace and add them to workspace
-                workspace_member_invites = WorkspaceMemberInvite.objects.filter(
-                    email=user.email, accepted=True
+                workspace_member_invites = (
+                    WorkspaceMemberInvite.objects.filter(
+                        email=user.email, accepted=True
+                    )
                 )
 
                 WorkspaceMember.objects.bulk_create(
@@ -436,7 +438,9 @@ class MagicSignInEndpoint(BaseAPIView):
 
             else:
                 return Response(
-                    {"error": "Your login code was incorrect. Please try again."},
+                    {
+                        "error": "Your login code was incorrect. Please try again."
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
