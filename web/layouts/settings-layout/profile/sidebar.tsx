@@ -4,43 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { observer } from "mobx-react-lite";
 import { useTheme } from "next-themes";
-import { Activity, ChevronLeft, CircleUser, KeyRound, LogOut, MoveLeft, Plus, Settings2, UserPlus } from "lucide-react";
+import { ChevronLeft, LogOut, MoveLeft, Plus, UserPlus } from "lucide-react";
 // hooks
 import { useApplication, useUser, useWorkspace } from "hooks/store";
 import useToast from "hooks/use-toast";
 // ui
 import { Tooltip } from "@plane/ui";
-
-const PROFILE_ACTION_LINKS = [
-  {
-    key: "profile",
-    label: "Profile",
-    href: `/profile`,
-    highlight: (pathName: string) => pathName === "/profile",
-    Icon: CircleUser,
-  },
-  {
-    key: "change-password",
-    label: "Change password",
-    href: `/profile/change-password`,
-    highlight: (pathName: string) => pathName === "/profile/change-password",
-    Icon: KeyRound,
-  },
-  {
-    key: "activity",
-    label: "Activity",
-    href: `/profile/activity`,
-    highlight: (pathName: string) => pathName === "/profile/activity",
-    Icon: Activity,
-  },
-  {
-    key: "preferences",
-    label: "Preferences",
-    href: `/profile/preferences/theme`,
-    highlight: (pathName: string) => pathName.includes("/profile/preferences"),
-    Icon: Settings2,
-  },
-];
+// constants
+import { PROFILE_ACTION_LINKS } from "constants/profile";
 
 const WORKSPACE_ACTION_LINKS = [
   {

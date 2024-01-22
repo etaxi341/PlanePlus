@@ -65,8 +65,8 @@ urlpatterns = [
         name="mark-all-read-notifications",
     ),
     path(
-        "notification-preferences/",
+        "users/me/notification-preferences/",
         UserNotificationPreferenceEndpoint.as_view(),
-        name="notification-preference",
+        name="user-notification-preferences",
     ),
 ]

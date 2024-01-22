@@ -9,13 +9,13 @@ import { IUserRootStore, UserRootStore } from "./user";
 import { IWorkspaceRootStore, WorkspaceRootStore } from "./workspace";
 import { IssueRootStore, IIssueRootStore } from "./issue/root.store";
 import { IStateStore, StateStore } from "./state.store";
-import { IPageStore, PageStore } from "./page.store";
 import { ILabelRootStore, LabelRootStore } from "./label";
 import { IMemberRootStore, MemberRootStore } from "./member";
 import { IInboxRootStore, InboxRootStore } from "./inbox";
 import { IEstimateStore, EstimateStore } from "./estimate.store";
 import { GlobalViewStore, IGlobalViewStore } from "./global-view.store";
 import { IMentionStore, MentionStore } from "./mention.store";
+import { DashboardStore, IDashboardStore } from "./dashboard.store";
 import { IProjectPageStore, ProjectPageStore } from "./project-page.store";
 
 enableStaticRendering(typeof window === "undefined");
@@ -32,11 +32,11 @@ export class RootStore {
   module: IModuleStore;
   projectView: IProjectViewStore;
   globalView: IGlobalViewStore;
-  page: IPageStore;
   issue: IIssueRootStore;
   state: IStateStore;
   estimate: IEstimateStore;
   mention: IMentionStore;
+  dashboard: IDashboardStore;
   projectPages: IProjectPageStore;
 
   constructor() {
@@ -56,7 +56,7 @@ export class RootStore {
     this.state = new StateStore(this);
     this.estimate = new EstimateStore(this);
     this.mention = new MentionStore(this);
-    this.projectPages = new ProjectPageStore();
-    this.page = new PageStore(this);
+    this.projectPages = new ProjectPageStore(this);
+    this.dashboard = new DashboardStore(this);
   }
 }

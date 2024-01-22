@@ -55,6 +55,20 @@ def service_importer(service, importer_id):
                 ignore_conflicts=True,
             )
 
+            _ = UserNotificationPreference.objects.bulk_create(
+                [UserNotificationPreference(user=user) for user in new_users],
+                batch_size=100,
+            )
+
+            _ = [
+                send_welcome_slack.delay(
+                    str(user.id),
+                    True,
+                    f"{user.email} was imported to Plane from {service}",
+                )
+                for user in new_users
+            ]
+
             workspace_users = User.objects.filter(
                 email__in=[
                     user.get("email").strip().lower()

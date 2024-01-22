@@ -5,7 +5,6 @@ from django.conf import settings
 # Module imports
 from . import BaseModel
 
-
 class Notification(BaseModel):
     workspace = models.ForeignKey(
         "db.Workspace", related_name="notifications", on_delete=models.CASCADE
@@ -50,6 +49,23 @@ class Notification(BaseModel):
         return f"{self.receiver.email} <{self.workspace.name}>"
 
 
+def get_default_preference():
+    return {
+        "property_change": {
+            "email": True,
+        },
+        "state": {
+            "email": True,
+        },
+        "comment": {
+            "email": True,
+        },
+        "mentions": {
+            "email": True,
+        },
+    }
+
+
 class UserNotificationPreference(BaseModel):
     # user it is related to
     user = models.ForeignKey(
@@ -88,7 +104,6 @@ class UserNotificationPreference(BaseModel):
     def __str__(self):
         """Return the user"""
         return f"<{self.user}>"
-    
 
 class EmailNotificationLog(BaseModel):
     # receiver
@@ -102,13 +117,12 @@ class EmailNotificationLog(BaseModel):
     # sent at
     processed_at = models.DateTimeField(null=True)
     sent_at = models.DateTimeField(null=True)
+    entity = models.CharField(max_length=200)
+    old_value = models.CharField(max_length=300, blank=True, null=True)
+    new_value = models.CharField(max_length=300, blank=True, null=True)
 
     class Meta:
-        verbose_name = "EmailNotificationLog"
-        verbose_name_plural = "EmailNotificationLogs"
+        verbose_name = "Email Notification Log"
+        verbose_name_plural = "Email Notification Logs"
         db_table = "email_notification_logs"
         ordering = ("-created_at",)
-
-    def __str__(self):
-        """Return the user"""
-        return f"<receiver={self.receiver}>"
