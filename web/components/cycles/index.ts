@@ -15,4 +15,3 @@ export * from "./cycles-board-card";
 export * from "./delete-modal";
 export * from "./cycle-peek-overview";
 export * from "./cycles-list-item";
-export * from "./active-cycle-info";

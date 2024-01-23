@@ -60,6 +60,7 @@ export const CommandPalette: FC = observer(() => {
     isDeleteIssueModalOpen,
     toggleDeleteIssueModal,
     isAnyModalOpen,
+    createIssueStoreType,
   } = commandPalette;
 
   const { setToastAlert } = useToast();

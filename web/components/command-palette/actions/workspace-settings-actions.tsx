@@ -22,6 +22,11 @@ export const CommandPaletteWorkspaceSettingsActions: React.FC<Props> = (props) =
   // derived values
   const workspaceMemberInfo = currentWorkspaceRole || EUserWorkspaceRoles.GUEST;
 
+  const redirect = (path: string) => {
+    closePalette();
+    router.push(path);
+  };
+
   return (
     <>
       {WORKSPACE_SETTINGS_LINKS.map(
