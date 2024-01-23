@@ -20,4 +20,3 @@ export * from "./project-archived-issue-details";
 export * from "./project-archived-issues";
 export * from "./project-issue-details";
 export * from "./user-profile";
-export * from "./workspace-active-cycle";

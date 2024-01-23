@@ -546,18 +546,6 @@ def create_issue_activity(
             epoch=epoch,
         )
     )
-    try:
-        # Add the user as a subscriber to the issue
-        IssueSubscriber.objects.create(
-            issue_id=issue_id,
-            project_id=project_id,
-            workspace_id=workspace_id,
-            subscriber_id=actor_id,
-            created_by_id=actor_id,
-            updated_by_id=actor_id,
-        )
-    except Exception as e:
-        pass
 
 
 def update_issue_activity(
