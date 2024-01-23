@@ -153,7 +153,7 @@ services:
 
   migrator:
     <<: *app-env
-    image: ${DOCKERHUB_USER:-makeplane}/plane-backend:${APP_RELEASE:-latest}
+    image: johannmnn/planeplus-backend:${APP_RELEASE:-latest}
     pull_policy: ${PULL_POLICY:-always}
     restart: no
     command: >
