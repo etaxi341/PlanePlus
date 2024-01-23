@@ -28,7 +28,7 @@ from plane.db.models import (
 )
 from plane.app.serializers import IssueActivitySerializer
 from plane.bgtasks.notification_task import notifications
-
+from plane.settings.redis import redis_instance
 
 # Track Changes in name
 def track_name(
@@ -1574,6 +1574,8 @@ def issue_activity(
     project_id,
     epoch,
     subscriber=True,
+    notification=False,
+    origin=None,
 ):
     try:
         issue_activities = []
@@ -1582,6 +1584,10 @@ def issue_activity(
         workspace_id = project.workspace_id
 
         if issue_id is not None:
+            if origin:
+                ri = redis_instance()
+                # set the request origin in redis
+                ri.set(str(issue_id), origin, ex=600)
             issue = Issue.objects.filter(pk=issue_id).first()
             if issue:
                 try:
@@ -1654,22 +1660,24 @@ def issue_activity(
                         )
             except Exception as e:
                 capture_exception(e)
+        
 
-        notifications.delay(
-            type=type,
-            issue_id=issue_id,
-            actor_id=actor_id,
-            project_id=project_id,
-            subscriber=subscriber,
-            issue_activities_created=json.dumps(
-                IssueActivitySerializer(
-                    issue_activities_created, many=True
-                ).data,
-                cls=DjangoJSONEncoder,
-            ),
-            requested_data=requested_data,
-            current_instance=current_instance,
-        )
+        if notification:
+            notifications.delay(
+                type=type,
+                issue_id=issue_id,
+                actor_id=actor_id,
+                project_id=project_id,
+                subscriber=subscriber,
+                issue_activities_created=json.dumps(
+                    IssueActivitySerializer(
+                        issue_activities_created, many=True
+                    ).data,
+                    cls=DjangoJSONEncoder,
+                ),
+                requested_data=requested_data,
+                current_instance=current_instance,
+            )
 
         return
     except Exception as e:
