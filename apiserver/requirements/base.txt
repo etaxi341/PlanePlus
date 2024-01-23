@@ -7,6 +7,7 @@ redis==4.6.0
 django-cors-headers==4.2.0
 whitenoise==6.5.0
 django-allauth==0.55.2
+django-auth-ldap==4.3.0
 faker==18.11.2
 django-filter==23.2
 jsonmodels==2.6.0
