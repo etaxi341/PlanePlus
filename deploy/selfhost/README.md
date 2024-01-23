@@ -62,7 +62,7 @@ mkdir plane-selfhost
 
 cd plane-selfhost
 
-curl -fsSL -o setup.sh https://raw.githubusercontent.com/makeplane/plane/master/deploy/selfhost/install.sh
+curl -fsSL -o setup.sh https://raw.githubusercontent.com/etaxi341/planeplus/master/deploy/selfhost/install.sh
 
 chmod +x setup.sh
 ```
@@ -77,7 +77,7 @@ cd plane-selfhost
 
 export RELEASE=preview
 
-curl -fsSL https://raw.githubusercontent.com/makeplane/plane/$BRANCH/deploy/selfhost/install.sh | sed  's@BRANCH=master@BRANCH='"$RELEASE"'@' > setup.sh
+curl -fsSL https://raw.githubusercontent.com/etaxi341/planeplus/$BRANCH/deploy/selfhost/install.sh | sed  's@BRANCH=master@BRANCH='"$RELEASE"'@' > setup.sh
 
 chmod +x setup.sh
 ```
@@ -251,7 +251,7 @@ Begin with downloading the migration script using below command
 
 ```
 
-curl -fsSL -o migrate.sh https://raw.githubusercontent.com/makeplane/plane/master/deploy/selfhost/migration-0.13-0.14.sh
+curl -fsSL -o migrate.sh https://raw.githubusercontent.com/etaxi341/planeplus/master/deploy/selfhost/migration-0.13-0.14.sh
 
 chmod +x migrate.sh
 

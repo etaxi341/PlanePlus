@@ -84,6 +84,13 @@ class DynamicBaseSerializer(BaseSerializer):
                 
                 self.fields[field] = expansion[field](many=True if field in ["members", "assignees", "labels", "issue_cycle", "issue_relation"] else False)            
 
+                self.fields[field] = expansion[field](
+                    many=True
+                    if field
+                    in ["members", "assignees", "labels", "issue_cycle"]
+                    else False
+                )
+
         return self.fields
 
     def to_representation(self, instance):

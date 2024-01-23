@@ -145,7 +145,7 @@ def get_release_notes():
         headers = {
             "Accept": "application/vnd.github.v3+json",
         }
-    url = "https://api.github.com/repos/makeplane/plane/releases?per_page=5&page=1"
+    url = "https://api.github.com/repos/etaxi341/planeplus/releases?per_page=5&page=1"
     response = requests.get(url, headers=headers)
 
     if response.status_code != 200:

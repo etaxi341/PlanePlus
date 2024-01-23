@@ -94,7 +94,7 @@ x-app-env : &app-env
 services:
   web:
     <<: *app-env
-    image: ${DOCKERHUB_USER:-makeplane}/plane-frontend:${APP_RELEASE:-latest}
+    image: johannmnn/planeplus-frontend:${APP_RELEASE:-latest}
     pull_policy: ${PULL_POLICY:-always}
     restart: unless-stopped
     command: /usr/local/bin/start.sh web/server.js web
@@ -106,7 +106,7 @@ services:
 
   space:
     <<: *app-env
-    image: ${DOCKERHUB_USER:-makeplane}/plane-space:${APP_RELEASE:-latest}
+    image: johannmnn/planeplus-space:${APP_RELEASE:-latest}
     pull_policy: ${PULL_POLICY:-always}
     restart: unless-stopped
     command: /usr/local/bin/start.sh space/server.js space
@@ -119,7 +119,7 @@ services:
 
   api:
     <<: *app-env
-    image: ${DOCKERHUB_USER:-makeplane}/plane-backend:${APP_RELEASE:-latest}
+    image: johannmnn/planeplus-backend:${APP_RELEASE:-latest}
     pull_policy: ${PULL_POLICY:-always}
     restart: unless-stopped
     command: ./bin/takeoff
@@ -131,7 +131,7 @@ services:
 
   worker:
     <<: *app-env
-    image: ${DOCKERHUB_USER:-makeplane}/plane-backend:${APP_RELEASE:-latest}
+    image: johannmnn/planeplus-backend:${APP_RELEASE:-latest}
     pull_policy: ${PULL_POLICY:-always}
     restart: unless-stopped
     command: ./bin/worker
@@ -142,7 +142,7 @@ services:
 
   beat-worker:
     <<: *app-env
-    image: ${DOCKERHUB_USER:-makeplane}/plane-backend:${APP_RELEASE:-latest}
+    image: johannmnn/planeplus-backend:${APP_RELEASE:-latest}
     pull_policy: ${PULL_POLICY:-always}
     restart: unless-stopped
     command: ./bin/beat
@@ -192,7 +192,7 @@ services:
   # Comment this if you already have a reverse proxy running
   proxy:
     <<: *app-env
-    image: ${DOCKERHUB_USER:-makeplane}/plane-proxy:${APP_RELEASE:-latest}
+    image: johannmnn/planeplus-proxy:${APP_RELEASE:-latest}
     pull_policy: ${PULL_POLICY:-always}
     ports:
         - ${NGINX_PORT}:80

@@ -14,7 +14,6 @@ import { TIssue } from "@plane/types";
 import { IQuickActionProps } from "../list/list-view-types";
 // constant
 import { EUserProjectRoles } from "constants/project";
-import { EIssuesStoreType } from "constants/issue";
 
 export const ProjectIssueQuickActions: React.FC<IQuickActionProps> = (props) => {
   const { issue, handleDelete, handleUpdate, customActionButton, portalElement } = props;

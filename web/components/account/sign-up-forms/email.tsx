@@ -6,6 +6,7 @@ import { observer } from "mobx-react-lite";
 import { AuthService } from "services/auth.service";
 // hooks
 import useToast from "hooks/use-toast";
+import { useApplication } from "hooks/store";
 // ui
 import { Button, Input } from "@plane/ui";
 // helpers
@@ -28,6 +29,9 @@ export const SignUpEmailForm: React.FC<Props> = observer((props) => {
   const { onSubmit, updateEmail } = props;
   // hooks
   const { setToastAlert } = useToast();
+  const {
+    config: { envConfig },
+  } = useApplication();
   const {
     control,
     formState: { errors, isSubmitting, isValid },
