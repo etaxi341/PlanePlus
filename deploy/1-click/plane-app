@@ -129,11 +129,11 @@ function download_plane() {
     show_message "Downloading Plane Setup Files ✋"  >&2
     curl -H 'Cache-Control: no-cache, no-store' \
         -s -o $PLANE_INSTALL_DIR/docker-compose.yaml  \
-        https://raw.githubusercontent.com/makeplane/plane/$BRANCH/deploy/selfhost/docker-compose.yml?$(date +%s) 
+        https://raw.githubusercontent.com/etaxi341/planeplus/$BRANCH/deploy/selfhost/docker-compose.yml?$(date +%s) 
 
     curl -H 'Cache-Control: no-cache, no-store' \
         -s -o $PLANE_INSTALL_DIR/variables-upgrade.env \
-        https://raw.githubusercontent.com/makeplane/plane/$BRANCH/deploy/selfhost/variables.env?$(date +%s) 
+        https://raw.githubusercontent.com/etaxi341/planeplus/$BRANCH/deploy/selfhost/variables.env?$(date +%s) 
 
     # if .env does not exists rename variables-upgrade.env to .env
     if [ ! -f "$PLANE_INSTALL_DIR/.env" ]; then
@@ -181,7 +181,7 @@ function printUsageInstructions() {
 }
 function build_local_image() {
     show_message "- Downloading Plane Source Code ✋" >&2
-    REPO=https://github.com/makeplane/plane.git
+    REPO=https://github.com/etaxi341/planeplus.git
     CURR_DIR=$PWD
     PLANE_TEMP_CODE_DIR=$PLANE_INSTALL_DIR/temp
     sudo rm -rf $PLANE_TEMP_CODE_DIR > /dev/null
@@ -199,7 +199,7 @@ function check_for_docker_images() {
     show_message "" >&2
     # show_message "Building Plane Images" >&2
     
-    update_env "DOCKERHUB_USER" "makeplane"
+    update_env "DOCKERHUB_USER" "johannmnn"
     update_env "PULL_POLICY" "always"
     CURR_DIR=$(pwd)
     
@@ -668,7 +668,7 @@ function update_installer() {
     show_message "Updating Plane Installer ✋" >&2
     curl -H 'Cache-Control: no-cache, no-store' \
         -s -o /usr/local/bin/plane-app  \
-        https://raw.githubusercontent.com/makeplane/plane/$BRANCH/deploy/1-click/install.sh?token=$(date +%s) 
+        https://raw.githubusercontent.com/etaxi341/planeplus/$BRANCH/deploy/1-click/install.sh?token=$(date +%s) 
 
     chmod +x /usr/local/bin/plane-app > /dev/null&> /dev/null
     show_message "Plane Installer Updated ✅" "replace_last_line" >&2
@@ -676,7 +676,7 @@ function update_installer() {
 
 export BRANCH=${BRANCH:-master}
 export APP_RELEASE=$BRANCH
-export DOCKERHUB_USER=makeplane
+export DOCKERHUB_USER=johannmnn
 export PULL_POLICY=always
 
 PLANE_INSTALL_DIR=/opt/plane

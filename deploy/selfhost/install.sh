@@ -4,7 +4,7 @@ BRANCH=master
 SCRIPT_DIR=$PWD
 PLANE_INSTALL_DIR=$PWD/plane-app
 export APP_RELEASE=$BRANCH
-export DOCKERHUB_USER=makeplane
+export DOCKERHUB_USER=johannmnn
 export PULL_POLICY=always
 USE_GLOBAL_IMAGES=1
 
@@ -39,7 +39,7 @@ function buildLocalImage() {
 
     if [ "$DO_BUILD" == "1" ] || [ "$DO_BUILD" == "" ];
     then
-        REPO=https://github.com/makeplane/plane.git
+        REPO=https://github.com/etaxi341/planeplus.git
         CURR_DIR=$PWD
         PLANE_TEMP_CODE_DIR=$(mktemp -d)
         git clone $REPO $PLANE_TEMP_CODE_DIR  --branch $BRANCH --single-branch
@@ -197,7 +197,7 @@ ARCH=$(uname -m)
 if [ $ARCH == "amd64" ] || [ $ARCH == "x86_64" ];
 then
     USE_GLOBAL_IMAGES=1
-    DOCKERHUB_USER=makeplane
+    DOCKERHUB_USER=johannmnn
     PULL_POLICY=always
 else
     USE_GLOBAL_IMAGES=0
