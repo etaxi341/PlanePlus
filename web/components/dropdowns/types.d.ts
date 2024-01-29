@@ -14,6 +14,10 @@ export type TDropdownProps = {
   buttonVariant: TButtonVariants;
   className?: string;
   disabled?: boolean;
+  hideIcon?: boolean;
+  placeholder?: string;
   placement?: Placement;
   tabIndex?: number;
+  // TODO: rename this prop to showTooltip
+  tooltip?: boolean;
 };

@@ -90,6 +90,7 @@ export class ArchivedIssuesFilter extends IssueFilterHelperStore implements IArc
     );
 
     if (userFilters?.displayFilters?.layout === "gantt_chart") filteredRouteParams.start_target_date = true;
+    if (userFilters?.displayFilters?.layout === "spreadsheet") filteredRouteParams.sub_issue = false;
 
     return filteredRouteParams;
   }
@@ -183,6 +184,11 @@ export class ArchivedIssuesFilter extends IssueFilterHelperStore implements IArc
             _filters.displayFilters.group_by = "state";
             updatedDisplayFilters.group_by = "state";
           }
+          // set sub_issue to false if layout is switched to spreadsheet and sub_issue is true
+          if (_filters.displayFilters.layout === "spreadsheet" && _filters.displayFilters.sub_issue === true) {
+            _filters.displayFilters.sub_issue = false;
+            updatedDisplayFilters.sub_issue = false;
+          }
 
           runInAction(() => {
             Object.keys(updatedDisplayFilters).forEach((_key) => {
@@ -193,6 +199,9 @@ export class ArchivedIssuesFilter extends IssueFilterHelperStore implements IArc
               );
             });
           });
+
+          if (this.requiresServerUpdate(updatedDisplayFilters))
+            this.rootIssueStore.archivedIssues.fetchIssues(workspaceSlug, projectId, "mutation");
 
           this.handleIssuesLocalFilters.set(EIssuesStoreType.ARCHIVED, type, workspaceSlug, projectId, undefined, {
             display_filters: _filters.displayFilters,

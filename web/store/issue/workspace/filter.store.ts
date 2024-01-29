@@ -100,6 +100,7 @@ export class WorkspaceIssuesFilter extends IssueFilterHelperStore implements IWo
     );
 
     if (userFilters?.displayFilters?.layout === "gantt_chart") filteredRouteParams.start_target_date = true;
+    if (userFilters?.displayFilters?.layout === "spreadsheet") filteredRouteParams.sub_issue = false;
 
     return filteredRouteParams;
   };
@@ -162,14 +163,15 @@ export class WorkspaceIssuesFilter extends IssueFilterHelperStore implements IWo
   ) => {
     try {
       if (!viewId) throw new Error("View id is required");
+      const issueFilters = this.getIssueFilters(viewId);
 
-      if (isEmpty(this.filters) || isEmpty(this.filters[viewId]) || isEmpty(filters)) return;
+      if (!issueFilters || isEmpty(filters)) return;
 
       const _filters = {
-        filters: this.filters[viewId].filters as IIssueFilterOptions,
-        displayFilters: this.filters[viewId].displayFilters as IIssueDisplayFilterOptions,
-        displayProperties: this.filters[viewId].displayProperties as IIssueDisplayProperties,
-        kanbanFilters: this.filters[viewId].kanbanFilters as TIssueKanbanFilters,
+        filters: issueFilters.filters as IIssueFilterOptions,
+        displayFilters: issueFilters.displayFilters as IIssueDisplayFilterOptions,
+        displayProperties: issueFilters.displayProperties as IIssueDisplayProperties,
+        kanbanFilters: issueFilters.kanbanFilters as TIssueKanbanFilters,
       };
 
       switch (type) {
@@ -212,6 +214,11 @@ export class WorkspaceIssuesFilter extends IssueFilterHelperStore implements IWo
             _filters.displayFilters.group_by = "state";
             updatedDisplayFilters.group_by = "state";
           }
+          // set sub_issue to false if layout is switched to spreadsheet and sub_issue is true
+          if (_filters.displayFilters.layout === "spreadsheet" && _filters.displayFilters.sub_issue === true) {
+            _filters.displayFilters.sub_issue = false;
+            updatedDisplayFilters.sub_issue = false;
+          }
 
           runInAction(() => {
             Object.keys(updatedDisplayFilters).forEach((_key) => {
@@ -222,6 +229,10 @@ export class WorkspaceIssuesFilter extends IssueFilterHelperStore implements IWo
               );
             });
           });
+
+          if (this.requiresServerUpdate(updatedDisplayFilters))
+            this.rootIssueStore.workspaceIssues.fetchIssues(workspaceSlug, viewId, "mutation");
+
           if (["all-issues", "assigned", "created", "subscribed"].includes(viewId))
             this.handleIssuesLocalFilters.set(EIssuesStoreType.GLOBAL, type, workspaceSlug, undefined, viewId, {
               display_filters: _filters.displayFilters,

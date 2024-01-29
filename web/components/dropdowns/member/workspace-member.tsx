@@ -5,6 +5,8 @@ import { usePopper } from "react-popper";
 import { Check, Search } from "lucide-react";
 // hooks
 import { useMember, useUser } from "hooks/store";
+import { useDropdownKeyDown } from "hooks/use-dropdown-key-down";
+import useOutsideClickDetector from "hooks/use-outside-click-detector";
 // components
 import { BackgroundButton, BorderButton, TransparentButton } from "components/dropdowns";
 // icons
@@ -13,8 +15,6 @@ import { Avatar } from "@plane/ui";
 import { cn } from "helpers/common.helper";
 // types
 import { MemberDropdownProps } from "./types";
-import { useDropdownKeyDown } from "hooks/use-dropdown-key-down";
-import useOutsideClickDetector from "hooks/use-outside-click-detector";
 
 export const WorkspaceMemberDropdown: React.FC<MemberDropdownProps> = observer((props) => {
   const {
@@ -25,12 +25,15 @@ export const WorkspaceMemberDropdown: React.FC<MemberDropdownProps> = observer((
     className = "",
     disabled = false,
     dropdownArrow = false,
+    dropdownArrowClassName = "",
+    hideIcon = false,
     multiple,
     onChange,
     placeholder = "Members",
     placement,
-    value,
     tabIndex,
+    tooltip = false,
+    value,
   } = props;
   // states
   const [query, setQuery] = useState("");
@@ -97,9 +100,7 @@ export const WorkspaceMemberDropdown: React.FC<MemberDropdownProps> = observer((
       as="div"
       ref={dropdownRef}
       tabIndex={tabIndex}
-      className={cn("h-full flex-shrink-0", {
-        className,
-      })}
+      className={cn("h-full", className)}
       {...comboboxProps}
       handleKeyDown={handleKeyDown}
     >
@@ -130,14 +131,20 @@ export const WorkspaceMemberDropdown: React.FC<MemberDropdownProps> = observer((
                 userIds={value}
                 className={buttonClassName}
                 dropdownArrow={dropdownArrow && !disabled}
+                dropdownArrowClassName={dropdownArrowClassName}
+                hideIcon={hideIcon}
                 placeholder={placeholder}
+                tooltip={tooltip}
               />
             ) : buttonVariant === "border-without-text" ? (
               <BorderButton
                 userIds={value}
                 className={buttonClassName}
                 dropdownArrow={dropdownArrow && !disabled}
+                dropdownArrowClassName={dropdownArrowClassName}
+                hideIcon={hideIcon}
                 placeholder={placeholder}
+                tooltip={tooltip}
                 hideText
               />
             ) : buttonVariant === "background-with-text" ? (
@@ -145,14 +152,20 @@ export const WorkspaceMemberDropdown: React.FC<MemberDropdownProps> = observer((
                 userIds={value}
                 className={buttonClassName}
                 dropdownArrow={dropdownArrow && !disabled}
+                dropdownArrowClassName={dropdownArrowClassName}
+                hideIcon={hideIcon}
                 placeholder={placeholder}
+                tooltip={tooltip}
               />
             ) : buttonVariant === "background-without-text" ? (
               <BackgroundButton
                 userIds={value}
                 className={buttonClassName}
                 dropdownArrow={dropdownArrow && !disabled}
+                dropdownArrowClassName={dropdownArrowClassName}
+                hideIcon={hideIcon}
                 placeholder={placeholder}
+                tooltip={tooltip}
                 hideText
               />
             ) : buttonVariant === "transparent-with-text" ? (
@@ -160,14 +173,20 @@ export const WorkspaceMemberDropdown: React.FC<MemberDropdownProps> = observer((
                 userIds={value}
                 className={buttonClassName}
                 dropdownArrow={dropdownArrow && !disabled}
+                dropdownArrowClassName={dropdownArrowClassName}
+                hideIcon={hideIcon}
                 placeholder={placeholder}
+                tooltip={tooltip}
               />
             ) : buttonVariant === "transparent-without-text" ? (
               <TransparentButton
                 userIds={value}
                 className={buttonClassName}
                 dropdownArrow={dropdownArrow && !disabled}
+                dropdownArrowClassName={dropdownArrowClassName}
+                hideIcon={hideIcon}
                 placeholder={placeholder}
+                tooltip={tooltip}
                 hideText
               />
             ) : null}

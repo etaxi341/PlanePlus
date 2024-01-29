@@ -18,12 +18,12 @@ export interface IEstimateStore {
   activeEstimateDetails: IEstimate | null;
   // computed actions
   areEstimatesEnabledForProject: (projectId: string) => boolean;
-  getEstimatePointValue: (estimateKey: number | null, projectId?: string) => string;
+  getEstimatePointValue: (estimateKey: number | null, projectId: string | null) => string;
   getProjectEstimateById: (estimateId: string) => IEstimate | null;
   getProjectActiveEstimateDetails: (projectId: string) => IEstimate | null;
   // fetch actions
   fetchProjectEstimates: (workspaceSlug: string, projectId: string) => Promise<IEstimate[]>;
-  fetchWorskpaceEstimates: (workspaceSlug: string) => Promise<IEstimate[]>;
+  fetchWorkspaceEstimates: (workspaceSlug: string) => Promise<IEstimate[]>;
   // crud actions
   createEstimate: (workspaceSlug: string, projectId: string, data: IEstimateFormData) => Promise<IEstimate>;
   updateEstimate: (
@@ -56,7 +56,7 @@ export class EstimateStore implements IEstimateStore {
       activeEstimateDetails: computed,
       // actions
       fetchProjectEstimates: action,
-      fetchWorskpaceEstimates: action,
+      fetchWorkspaceEstimates: action,
       createEstimate: action,
       updateEstimate: action,
       deleteEstimate: action,
@@ -109,7 +109,7 @@ export class EstimateStore implements IEstimateStore {
   /**
    * @description returns the point value for the given estimate key to display in the UI
    */
-  getEstimatePointValue = computedFn((estimateKey: number | null, projectId?: string) => {
+  getEstimatePointValue = computedFn((estimateKey: number | null, projectId: string | null) => {
     if (estimateKey === null) return "None";
     const activeEstimate = projectId ? this.getProjectActiveEstimateDetails(projectId) : this.activeEstimateDetails;
     return activeEstimate?.points?.find((point) => point.key === estimateKey)?.value || "None";
@@ -158,7 +158,7 @@ export class EstimateStore implements IEstimateStore {
    * @param workspaceSlug
    * @param projectId
    */
-  fetchWorskpaceEstimates = async (workspaceSlug: string) =>
+  fetchWorkspaceEstimates = async (workspaceSlug: string) =>
     await this.estimateService.getWorkspaceEstimatesList(workspaceSlug).then((response) => {
       runInAction(() => {
         response.forEach((estimate) => {

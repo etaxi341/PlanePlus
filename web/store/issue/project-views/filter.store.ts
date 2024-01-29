@@ -91,6 +91,7 @@ export class ProjectViewIssuesFilter extends IssueFilterHelperStore implements I
     );
 
     if (userFilters?.displayFilters?.layout === "gantt_chart") filteredRouteParams.start_target_date = true;
+    if (userFilters?.displayFilters?.layout === "spreadsheet") filteredRouteParams.sub_issue = false;
 
     return filteredRouteParams;
   }
@@ -192,6 +193,11 @@ export class ProjectViewIssuesFilter extends IssueFilterHelperStore implements I
             _filters.displayFilters.group_by = "state";
             updatedDisplayFilters.group_by = "state";
           }
+          // set sub_issue to false if layout is switched to spreadsheet and sub_issue is true
+          if (_filters.displayFilters.layout === "spreadsheet" && _filters.displayFilters.sub_issue === true) {
+            _filters.displayFilters.sub_issue = false;
+            updatedDisplayFilters.sub_issue = false;
+          }
 
           runInAction(() => {
             Object.keys(updatedDisplayFilters).forEach((_key) => {
@@ -202,6 +208,9 @@ export class ProjectViewIssuesFilter extends IssueFilterHelperStore implements I
               );
             });
           });
+
+          if (this.requiresServerUpdate(updatedDisplayFilters))
+            this.rootIssueStore.projectViewIssues.fetchIssues(workspaceSlug, projectId, "mutation", viewId);
 
           await this.issueFilterService.patchView(workspaceSlug, projectId, viewId, {
             display_filters: _filters.displayFilters,

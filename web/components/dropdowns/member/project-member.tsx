@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { observer } from "mobx-react-lite";
 import { Combobox } from "@headlessui/react";
 import { usePopper } from "react-popper";
@@ -29,13 +29,16 @@ export const ProjectMemberDropdown: React.FC<Props> = observer((props) => {
     className = "",
     disabled = false,
     dropdownArrow = false,
+    dropdownArrowClassName = "",
+    hideIcon = false,
     multiple,
     onChange,
     placeholder = "Members",
     placement,
     projectId,
-    value,
     tabIndex,
+    tooltip = false,
+    value,
   } = props;
   // states
   const [query, setQuery] = useState("");
@@ -108,9 +111,7 @@ export const ProjectMemberDropdown: React.FC<Props> = observer((props) => {
       as="div"
       ref={dropdownRef}
       tabIndex={tabIndex}
-      className={cn("h-full flex-shrink-0", {
-        className,
-      })}
+      className={cn("h-full", className)}
       onKeyDown={handleKeyDown}
       {...comboboxProps}
     >
@@ -143,14 +144,20 @@ export const ProjectMemberDropdown: React.FC<Props> = observer((props) => {
                 userIds={value}
                 className={buttonClassName}
                 dropdownArrow={dropdownArrow && !disabled}
+                dropdownArrowClassName={dropdownArrowClassName}
+                hideIcon={hideIcon}
                 placeholder={placeholder}
+                tooltip={tooltip}
               />
             ) : buttonVariant === "border-without-text" ? (
               <BorderButton
                 userIds={value}
                 className={buttonClassName}
                 dropdownArrow={dropdownArrow && !disabled}
+                dropdownArrowClassName={dropdownArrowClassName}
+                hideIcon={hideIcon}
                 placeholder={placeholder}
+                tooltip={tooltip}
                 hideText
               />
             ) : buttonVariant === "background-with-text" ? (
@@ -158,14 +165,20 @@ export const ProjectMemberDropdown: React.FC<Props> = observer((props) => {
                 userIds={value}
                 className={buttonClassName}
                 dropdownArrow={dropdownArrow && !disabled}
+                dropdownArrowClassName={dropdownArrowClassName}
+                hideIcon={hideIcon}
                 placeholder={placeholder}
+                tooltip={tooltip}
               />
             ) : buttonVariant === "background-without-text" ? (
               <BackgroundButton
                 userIds={value}
                 className={buttonClassName}
                 dropdownArrow={dropdownArrow && !disabled}
+                dropdownArrowClassName={dropdownArrowClassName}
+                hideIcon={hideIcon}
                 placeholder={placeholder}
+                tooltip={tooltip}
                 hideText
               />
             ) : buttonVariant === "transparent-with-text" ? (
@@ -173,14 +186,20 @@ export const ProjectMemberDropdown: React.FC<Props> = observer((props) => {
                 userIds={value}
                 className={buttonClassName}
                 dropdownArrow={dropdownArrow && !disabled}
+                dropdownArrowClassName={dropdownArrowClassName}
+                hideIcon={hideIcon}
                 placeholder={placeholder}
+                tooltip={tooltip}
               />
             ) : buttonVariant === "transparent-without-text" ? (
               <TransparentButton
                 userIds={value}
                 className={buttonClassName}
                 dropdownArrow={dropdownArrow && !disabled}
+                dropdownArrowClassName={dropdownArrowClassName}
+                hideIcon={hideIcon}
                 placeholder={placeholder}
+                tooltip={tooltip}
                 hideText
               />
             ) : null}
