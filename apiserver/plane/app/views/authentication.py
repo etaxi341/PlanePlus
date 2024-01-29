@@ -189,17 +189,13 @@ class SignInEndpoint(BaseAPIView):
                 {"error": ldap_user },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        
-        firstname = "User"
-        lastname = uuid.uuid4().hex
-        
-        for dn, attributes in ldap_user:
-            firstname = attributes['givenName'][0]
-            lastname = attributes['sn'][0]
-            # Check if the user already exists in your database.
-            if not User.objects.filter(email=email).exists():
+        # Check if the user already exists in your database.
+        if not User.objects.filter(email=email).exists():
+            for dn, attributes in ldap_user:
                 user = User.objects.create(email=email, username=uuid.uuid4().hex)
                 user.set_password(uuid.uuid4().hex)
+                user.first_name = attributes['givenName'][0]
+                user.last_name = attributes['sn'][0]
 
                 # settings last actives for the user
                 user.is_password_autoset = False
@@ -211,18 +207,6 @@ class SignInEndpoint(BaseAPIView):
                 user.save()
 
         user = User.objects.filter(email=email).first()
-
-        user.onboarding_step = {
-            "workspace_join": True,
-            "profile_complete": True,
-            "workspace_create": True,
-            "workspace_invite": True,
-        }
-        user.is_onboarded = True
-        user.first_name = firstname
-        user.last_name = lastname
-        user.display_name = firstname + " " + lastname
-
         # settings last active for the user
         user.is_active = True
         user.last_active = timezone.now()
