@@ -76,10 +76,11 @@ export class IssueFilterHelperStore implements IIssueFilterHelperStore {
       labels: filters?.labels || undefined,
       start_date: filters?.start_date || undefined,
       target_date: filters?.target_date || undefined,
+      project: filters.project || undefined,
+      subscriber: filters.subscriber || undefined,
       // display filters
       type: displayFilters?.type || undefined,
       sub_issue: displayFilters?.sub_issue ?? true,
-      start_target_date: displayFilters?.start_target_date ?? true,
     };
 
     const issueFiltersParams: Partial<Record<TIssueParams, boolean | string>> = {};
@@ -168,7 +169,6 @@ export class IssueFilterHelperStore implements IIssueFilterHelperStore {
       type: filters?.type || null,
       sub_issue: filters?.sub_issue || false,
       show_empty_groups: filters?.show_empty_groups || false,
-      start_target_date: filters?.start_target_date || false,
     };
   };
 
