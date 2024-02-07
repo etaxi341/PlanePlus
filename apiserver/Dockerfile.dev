@@ -26,6 +26,7 @@ WORKDIR /code
 
 COPY requirements.txt ./requirements.txt
 ADD requirements ./requirements
+RUN apk add --no-cache libffi-dev openldap-dev
 
 # Install the local development settings
 RUN pip install -r requirements/local.txt --compile --no-cache-dir
