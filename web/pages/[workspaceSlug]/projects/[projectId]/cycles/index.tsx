@@ -13,13 +13,15 @@ import { CyclesHeader } from "components/headers";
 import { CyclesView, ActiveCycleDetails, CycleCreateUpdateModal } from "components/cycles";
 import { EmptyState, getEmptyStateImagePath } from "components/empty-state";
 // ui
-import { Spinner, Tooltip } from "@plane/ui";
+import { Tooltip } from "@plane/ui";
+import { CycleModuleBoardLayout, CycleModuleListLayout, GanttLayoutLoader } from "components/ui";
 // types
 import { TCycleView, TCycleLayout } from "@plane/types";
 import { NextPageWithLayout } from "lib/types";
 // constants
 import { CYCLE_TAB_LIST, CYCLE_VIEW_LAYOUTS } from "constants/cycle";
 import { EUserWorkspaceRoles } from "constants/workspace";
+import { CYCLE_EMPTY_STATE_DETAILS } from "constants/empty-state";
 
 const ProjectCyclesPage: NextPageWithLayout = observer(() => {
   const [createModal, setCreateModal] = useState(false);
@@ -65,9 +67,11 @@ const ProjectCyclesPage: NextPageWithLayout = observer(() => {
 
   if (loader)
     return (
-      <div className="flex items-center justify-center h-full w-full">
-        <Spinner />
-      </div>
+      <>
+        {cycleLayout === "list" && <CycleModuleListLayout />}
+        {cycleLayout === "board" && <CycleModuleBoardLayout />}
+        {cycleLayout === "gantt" && <GanttLayoutLoader />}
+      </>
     );
 
   return (
@@ -81,16 +85,15 @@ const ProjectCyclesPage: NextPageWithLayout = observer(() => {
       {totalCycles === 0 ? (
         <div className="h-full place-items-center">
           <EmptyState
-            title="Group and timebox your work in Cycles."
-            description="Break work down by timeboxed chunks, work backwards from your project deadline to set dates, and make tangible progress as a team."
+            title={CYCLE_EMPTY_STATE_DETAILS["cycles"].title}
+            description={CYCLE_EMPTY_STATE_DETAILS["cycles"].description}
             image={EmptyStateImagePath}
             comicBox={{
-              title: "Cycles are repetitive time-boxes.",
-              description:
-                "A sprint, an iteration, and or any other term you use for weekly or fortnightly tracking of work is a cycle.",
+              title: CYCLE_EMPTY_STATE_DETAILS["cycles"].comicBox.title,
+              description: CYCLE_EMPTY_STATE_DETAILS["cycles"].comicBox.description,
             }}
             primaryButton={{
-              text: "Set your first cycle",
+              text: CYCLE_EMPTY_STATE_DETAILS["cycles"].primaryButton.text,
               onClick: () => {
                 setTrackElement("Cycle empty state");
                 setCreateModal(true);
@@ -108,7 +111,7 @@ const ProjectCyclesPage: NextPageWithLayout = observer(() => {
           selectedIndex={CYCLE_TAB_LIST.findIndex((i) => i.key == cycleTab)}
           onChange={(i) => handleCurrentView(CYCLE_TAB_LIST[i]?.key ?? "active")}
         >
-          <div className="flex flex-col items-end justify-between gap-4 border-b border-custom-border-200 px-4 pb-4 sm:flex-row sm:items-center sm:px-5 sm:pb-0">
+          <div className="flex flex-col items-start justify-between gap-4 border-b border-custom-border-200 px-4 sm:flex-row sm:items-center sm:px-5 sm:pb-0">
             <Tab.List as="div" className="flex items-center overflow-x-scroll">
               {CYCLE_TAB_LIST.map((tab) => (
                 <Tab
@@ -123,32 +126,34 @@ const ProjectCyclesPage: NextPageWithLayout = observer(() => {
                 </Tab>
               ))}
             </Tab.List>
-            {cycleTab !== "active" && (
-              <div className="flex items-center gap-1 rounded bg-custom-background-80 p-1">
-                {CYCLE_VIEW_LAYOUTS.map((layout) => {
-                  if (layout.key === "gantt" && cycleTab === "draft") return null;
+            <div className="hidden sm:block">
+              {cycleTab !== "active" && (
+                <div className="flex items-center self-end sm:self-center md:self-center lg:self-center gap-1 rounded bg-custom-background-80 p-1">
+                  {CYCLE_VIEW_LAYOUTS.map((layout) => {
+                    if (layout.key === "gantt" && cycleTab === "draft") return null;
 
-                  return (
-                    <Tooltip key={layout.key} tooltipContent={layout.title}>
-                      <button
-                        type="button"
-                        className={`group grid h-[22px] w-7 place-items-center overflow-hidden rounded transition-all hover:bg-custom-background-100 ${
-                          cycleLayout == layout.key ? "bg-custom-background-100 shadow-custom-shadow-2xs" : ""
-                        }`}
-                        onClick={() => handleCurrentLayout(layout.key as TCycleLayout)}
-                      >
-                        <layout.icon
-                          strokeWidth={2}
-                          className={`h-3.5 w-3.5 ${
-                            cycleLayout == layout.key ? "text-custom-text-100" : "text-custom-text-200"
+                    return (
+                      <Tooltip key={layout.key} tooltipContent={layout.title}>
+                        <button
+                          type="button"
+                          className={`group grid h-[22px] w-7 place-items-center overflow-hidden rounded transition-all hover:bg-custom-background-100 ${
+                            cycleLayout == layout.key ? "bg-custom-background-100 shadow-custom-shadow-2xs" : ""
                           }`}
-                        />
-                      </button>
-                    </Tooltip>
-                  );
-                })}
-              </div>
-            )}
+                          onClick={() => handleCurrentLayout(layout.key as TCycleLayout)}
+                        >
+                          <layout.icon
+                            strokeWidth={2}
+                            className={`h-3.5 w-3.5 ${
+                              cycleLayout == layout.key ? "text-custom-text-100" : "text-custom-text-200"
+                            }`}
+                          />
+                        </button>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
           <Tab.Panels as={Fragment}>

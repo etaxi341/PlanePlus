@@ -17,7 +17,7 @@ import { EUserProjectRoles } from "constants/project";
 import { EIssuesStoreType } from "constants/issue";
 
 export const ProjectIssueQuickActions: React.FC<IQuickActionProps> = (props) => {
-  const { issue, handleDelete, handleUpdate, customActionButton, portalElement } = props;
+  const { issue, handleDelete, handleUpdate, customActionButton, portalElement, readOnly = false } = props;
   // router
   const router = useRouter();
   const { workspaceSlug } = router.query;
@@ -54,6 +54,8 @@ export const ProjectIssueQuickActions: React.FC<IQuickActionProps> = (props) => 
   };
   delete duplicateIssuePayload.id;
 
+  const isDraftIssue = router?.asPath?.includes("draft-issues") || false;
+
   return (
     <>
       <DeleteIssueModal
@@ -62,6 +64,7 @@ export const ProjectIssueQuickActions: React.FC<IQuickActionProps> = (props) => 
         handleClose={() => setDeleteIssueModal(false)}
         onSubmit={handleDelete}
       />
+
       <CreateUpdateIssueModal
         isOpen={createUpdateIssueModal}
         onClose={() => {
@@ -73,7 +76,9 @@ export const ProjectIssueQuickActions: React.FC<IQuickActionProps> = (props) => 
           if (issueToEdit && handleUpdate) await handleUpdate({ ...issueToEdit, ...data });
         }}
         storeType={EIssuesStoreType.PROJECT}
+        isDraft={isDraftIssue}
       />
+
       <CustomMenu
         placement="bottom-start"
         customButton={customActionButton}
@@ -91,7 +96,7 @@ export const ProjectIssueQuickActions: React.FC<IQuickActionProps> = (props) => 
             Copy link
           </div>
         </CustomMenu.MenuItem>
-        {isEditingAllowed && (
+        {isEditingAllowed && !readOnly && (
           <>
             <CustomMenu.MenuItem
               onClick={() => {

@@ -59,7 +59,7 @@ export const HeaderGroupByCard: FC<IHeaderGroupByCard> = observer((props) => {
   const { setToastAlert } = useToast();
 
   const renderExistingIssueModal = moduleId || cycleId;
-  const ExistingIssuesListModalPayload = moduleId ? { module: [moduleId.toString()] } : { cycle: true };
+  const ExistingIssuesListModalPayload = moduleId ? { module: moduleId.toString() } : { cycle: true };
 
   const handleAddIssuesToView = async (data: ISearchIssueResponse[]) => {
     if (!workspaceSlug || !projectId) return;
@@ -79,21 +79,14 @@ export const HeaderGroupByCard: FC<IHeaderGroupByCard> = observer((props) => {
 
   return (
     <>
-      {isDraftIssue ? (
-        <CreateUpdateDraftIssueModal
-          isOpen={isOpen}
-          handleClose={() => setIsOpen(false)}
-          prePopulateData={issuePayload}
-          fieldsToShow={["all"]}
-        />
-      ) : (
-        <CreateUpdateIssueModal
-          isOpen={isOpen}
-          onClose={() => setIsOpen(false)}
-          data={issuePayload}
-          storeType={storeType}
-        />
-      )}
+      <CreateUpdateIssueModal
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        data={issuePayload}
+        storeType={storeType}
+        isDraft={isDraftIssue}
+      />
+
       {renderExistingIssueModal && (
         <ExistingIssuesListModal
           workspaceSlug={workspaceSlug?.toString()}
