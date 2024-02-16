@@ -6,7 +6,9 @@ on:
     branches:
       - master
       - preview
+      - qa
       - develop
+      - release-*
   release:
     types: [released, prereleased]
 
@@ -15,6 +17,7 @@ env:
 
 jobs:
   branch_build_setup:
+    if: ${{ (github.event_name == 'pull_request' && github.event.action =='closed' && github.event.pull_request.merged == true) || github.event_name == 'release' }}
     name: Build-Push Web/Space/API/Proxy Docker Image
     runs-on: ubuntu-latest
     outputs:
@@ -32,7 +35,7 @@ jobs:
             echo "BUILDX_DRIVER=cloud" >> $GITHUB_OUTPUT
             echo "BUILDX_VERSION=lab:latest" >> $GITHUB_OUTPUT
             echo "BUILDX_PLATFORMS=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
-            echo "BUILDX_ENDPOINT=makeplane/plane-dev" >> $GITHUB_OUTPUT
+            echo "BUILDX_ENDPOINT=etaxi341/planeplus-dev" >> $GITHUB_OUTPUT
           else
             echo "BUILDX_DRIVER=docker-container" >> $GITHUB_OUTPUT
             echo "BUILDX_VERSION=latest" >> $GITHUB_OUTPUT
@@ -45,19 +48,19 @@ jobs:
     runs-on: ubuntu-20.04
     needs: [branch_build_setup]
     env:
-      FRONTEND_TAG: ${{ secrets.DOCKERHUB_USERNAME }}/plane-frontend:${{ needs.branch_build_setup.outputs.gh_branch_name }}
+      FRONTEND_TAG: ${{ secrets.DOCKERHUB_USERNAME }}/planeplus-frontend:${{ needs.branch_build_setup.outputs.gh_branch_name }}
       TARGET_BRANCH: ${{ needs.branch_build_setup.outputs.gh_branch_name }}
       BUILDX_DRIVER: ${{ needs.branch_build_setup.outputs.gh_buildx_driver }}
       BUILDX_VERSION: ${{ needs.branch_build_setup.outputs.gh_buildx_version }}
       BUILDX_PLATFORMS: ${{ needs.branch_build_setup.outputs.gh_buildx_platforms }}
       BUILDX_ENDPOINT: ${{ needs.branch_build_setup.outputs.gh_buildx_endpoint }}
     steps:
-      - name: Set Frontend Docker Tag
+      - name: Set Frontend Docker Tag 
         run: |
           if [ "${{ github.event_name }}" == "release" ]; then
-            TAG=${{ secrets.DOCKERHUB_USERNAME }}/plane-frontend:latest,${{ secrets.DOCKERHUB_USERNAME }}/plane-frontend:${{ github.event.release.tag_name }}
+            TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-frontend:latest,${{ secrets.DOCKERHUB_USERNAME }}/planeplus-frontend:${{ github.event.release.tag_name }}
           elif [ "${{ env.TARGET_BRANCH }}" == "master" ]; then
-            TAG=${{ secrets.DOCKERHUB_USERNAME }}/plane-frontend:stable
+            TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-frontend:stable
           else
             TAG=${{ env.FRONTEND_TAG }}
           fi
@@ -68,6 +71,10 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Downloading Web Source Code
+        uses: actions/download-artifact@v3
+        with:
+          name: web-src-code
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -80,7 +87,7 @@ jobs:
         uses: actions/checkout@v4.1.1
 
       - name: Build and Push Frontend to Docker Container Registry
-        uses: docker/build-push-action@v5.1.0
+        uses: docker/build-push-action@v4.0.0
         with:
           context: .
           file: ./web/Dockerfile.web
@@ -96,19 +103,19 @@ jobs:
     runs-on: ubuntu-20.04
     needs: [branch_build_setup]
     env:
-      SPACE_TAG: ${{ secrets.DOCKERHUB_USERNAME }}/plane-space:${{ needs.branch_build_setup.outputs.gh_branch_name }}
+      SPACE_TAG: ${{ secrets.DOCKERHUB_USERNAME }}/planeplus-space:${{ needs.branch_build_setup.outputs.gh_branch_name }}
       TARGET_BRANCH: ${{ needs.branch_build_setup.outputs.gh_branch_name }}
       BUILDX_DRIVER: ${{ needs.branch_build_setup.outputs.gh_buildx_driver }}
       BUILDX_VERSION: ${{ needs.branch_build_setup.outputs.gh_buildx_version }}
       BUILDX_PLATFORMS: ${{ needs.branch_build_setup.outputs.gh_buildx_platforms }}
       BUILDX_ENDPOINT: ${{ needs.branch_build_setup.outputs.gh_buildx_endpoint }}
     steps:
-      - name: Set Space Docker Tag
+      - name: Set Space Docker Tag 
         run: |
           if [ "${{ github.event_name }}" == "release" ]; then
-            TAG=${{ secrets.DOCKERHUB_USERNAME }}/plane-space:latest,${{ secrets.DOCKERHUB_USERNAME }}/plane-space:${{ github.event.release.tag_name }}
+            TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-space:latest,${{ secrets.DOCKERHUB_USERNAME }}/planeplus-space:${{ github.event.release.tag_name }}
           elif [ "${{ env.TARGET_BRANCH }}" == "master" ]; then
-            TAG=${{ secrets.DOCKERHUB_USERNAME }}/plane-space:stable
+            TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-space:stable
           else
             TAG=${{ env.SPACE_TAG }}
           fi
@@ -119,6 +126,10 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Downloading Space Source Code
+        uses: actions/download-artifact@v3
+        with:
+          name: space-src-code
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -131,7 +142,7 @@ jobs:
         uses: actions/checkout@v4.1.1
 
       - name: Build and Push Space to Docker Hub
-        uses: docker/build-push-action@v5.1.0
+        uses: docker/build-push-action@v4.0.0
         with:
           context: .
           file: ./space/Dockerfile.space
@@ -147,19 +158,19 @@ jobs:
     runs-on: ubuntu-20.04
     needs: [branch_build_setup]
     env:
-      BACKEND_TAG: ${{ secrets.DOCKERHUB_USERNAME }}/plane-backend:${{ needs.branch_build_setup.outputs.gh_branch_name }}
+      BACKEND_TAG: ${{ secrets.DOCKERHUB_USERNAME }}/planeplus-backend:${{ needs.branch_build_setup.outputs.gh_branch_name }}
       TARGET_BRANCH: ${{ needs.branch_build_setup.outputs.gh_branch_name }}
       BUILDX_DRIVER: ${{ needs.branch_build_setup.outputs.gh_buildx_driver }}
       BUILDX_VERSION: ${{ needs.branch_build_setup.outputs.gh_buildx_version }}
       BUILDX_PLATFORMS: ${{ needs.branch_build_setup.outputs.gh_buildx_platforms }}
       BUILDX_ENDPOINT: ${{ needs.branch_build_setup.outputs.gh_buildx_endpoint }}
     steps:
-      - name: Set Backend Docker Tag
+      - name: Set Backend Docker Tag 
         run: |
           if [ "${{ github.event_name }}" == "release" ]; then
-            TAG=${{ secrets.DOCKERHUB_USERNAME }}/plane-backend:latest,${{ secrets.DOCKERHUB_USERNAME }}/plane-backend:${{ github.event.release.tag_name }}
+            TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-backend:latest,${{ secrets.DOCKERHUB_USERNAME }}/planeplus-backend:${{ github.event.release.tag_name }}
           elif [ "${{ env.TARGET_BRANCH }}" == "master" ]; then
-            TAG=${{ secrets.DOCKERHUB_USERNAME }}/plane-backend:stable
+            TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-backend:stable
           else
             TAG=${{ env.BACKEND_TAG }}
           fi
@@ -170,6 +181,10 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Downloading Backend Source Code
+        uses: actions/download-artifact@v3
+        with:
+          name: backend-src-code
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -182,7 +197,7 @@ jobs:
         uses: actions/checkout@v4.1.1
 
       - name: Build and Push Backend to Docker Hub
-        uses: docker/build-push-action@v5.1.0
+        uses: docker/build-push-action@v4.0.0
         with:
           context: ./apiserver
           file: ./apiserver/Dockerfile.api
@@ -199,19 +214,19 @@ jobs:
     runs-on: ubuntu-20.04
     needs: [branch_build_setup]
     env:
-      PROXY_TAG: ${{ secrets.DOCKERHUB_USERNAME }}/plane-proxy:${{ needs.branch_build_setup.outputs.gh_branch_name }}
+      PROXY_TAG: ${{ secrets.DOCKERHUB_USERNAME }}/planeplus-proxy:${{ needs.branch_build_setup.outputs.gh_branch_name }}
       TARGET_BRANCH: ${{ needs.branch_build_setup.outputs.gh_branch_name }}
       BUILDX_DRIVER: ${{ needs.branch_build_setup.outputs.gh_buildx_driver }}
       BUILDX_VERSION: ${{ needs.branch_build_setup.outputs.gh_buildx_version }}
       BUILDX_PLATFORMS: ${{ needs.branch_build_setup.outputs.gh_buildx_platforms }}
       BUILDX_ENDPOINT: ${{ needs.branch_build_setup.outputs.gh_buildx_endpoint }}
     steps:
-      - name: Set Proxy Docker Tag
+      - name: Set Proxy Docker Tag 
         run: |
           if [ "${{ github.event_name }}" == "release" ]; then
-            TAG=${{ secrets.DOCKERHUB_USERNAME }}/plane-proxy:latest,${{ secrets.DOCKERHUB_USERNAME }}/plane-proxy:${{ github.event.release.tag_name }}
+            TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-proxy:latest,${{ secrets.DOCKERHUB_USERNAME }}/planeplus-proxy:${{ github.event.release.tag_name }}
           elif [ "${{ env.TARGET_BRANCH }}" == "master" ]; then
-            TAG=${{ secrets.DOCKERHUB_USERNAME }}/plane-proxy:stable
+            TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-proxy:stable
           else
             TAG=${{ env.PROXY_TAG }}
           fi
@@ -234,7 +249,7 @@ jobs:
         uses: actions/checkout@v4.1.1
 
       - name: Build and Push Plane-Proxy to Docker Hub
-        uses: docker/build-push-action@v5.1.0
+        uses: docker/build-push-action@v4.0.0
         with:
           context: ./nginx
           file: ./nginx/Dockerfile

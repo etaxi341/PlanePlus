@@ -2,13 +2,16 @@
 import os
 import uuid
 import json
+import ldap
 
 # Django imports
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.conf import settings
+#from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password
+from django_auth_ldap.backend import LDAPBackend
 
 # Third party imports
 from rest_framework.response import Response
@@ -124,6 +127,28 @@ class SignUpEndpoint(BaseAPIView):
 
         return Response(data, status=status.HTTP_200_OK)
 
+def aut(username, password):
+    ldap_server = os.environ.get("AUTH_LDAP_SERVER_URI")
+    ldap_base_dn = os.environ.get("AUTH_LDAP_USER_SEARCH_BASE")
+    search_filter = os.environ.get("AUTH_LDAP_USER_SEARCH_FILTER").replace("(user)", username)
+
+    try:
+        ldap_connection = ldap.initialize(ldap_server)
+        ldap_connection.set_option(ldap.OPT_REFERRALS,0)
+        ldap_connection.simple_bind_s(username, password)
+        
+        # Suchen Sie nach dem Benutzer im LDAP-Verzeichnis
+        result = ldap_connection.search_s(ldap_base_dn, ldap.SCOPE_SUBTREE, search_filter)
+        if result:
+            return result  # Benutzer authentifiziert
+        else:
+            return "User does not exist"  # Benutzer nicht gefunden
+
+    except ldap.LDAPError as e:
+        return f"Error at LDAP: {e}"  # LDAP-Fehler oder Authentifizierungsfehler
+
+    finally:
+        ldap_connection.unbind()
 
 class SignInEndpoint(BaseAPIView):
     permission_classes = (AllowAny,)
@@ -158,50 +183,30 @@ class SignInEndpoint(BaseAPIView):
             )
 
         # Get the user
+        ldap_user = aut(username=email, password=password)
+        if type(ldap_user) == str:
+            return Response(
+                {"error": ldap_user },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Check if the user already exists in your database.
+        if not User.objects.filter(email=email).exists():
+            for dn, attributes in ldap_user:
+                user = User.objects.create(email=email, username=uuid.uuid4().hex)
+                user.set_password(uuid.uuid4().hex)
+                user.first_name = attributes['givenName'][0]
+                user.last_name = attributes['sn'][0]
+
+                # settings last actives for the user
+                user.is_password_autoset = False
+                user.last_active = timezone.now()
+                user.last_login_time = timezone.now()
+                user.last_login_ip = request.META.get("REMOTE_ADDR")
+                user.last_login_uagent = request.META.get("HTTP_USER_AGENT")
+                user.token_updated_at = timezone.now()
+                user.save()
+
         user = User.objects.filter(email=email).first()
-
-        # Existing user
-        if user:
-            # Check user password
-            if not user.check_password(password):
-                return Response(
-                    {
-                        "error": "Sorry, we could not find a user with the provided credentials. Please try again."
-                    },
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-
-        # Create the user
-        else:
-            (ENABLE_SIGNUP,) = get_configuration_value(
-                [
-                    {
-                        "key": "ENABLE_SIGNUP",
-                        "default": os.environ.get("ENABLE_SIGNUP"),
-                    },
-                ]
-            )
-            # Create the user
-            if (
-                ENABLE_SIGNUP == "0"
-                and not WorkspaceMemberInvite.objects.filter(
-                    email=email,
-                ).exists()
-            ):
-                return Response(
-                    {
-                        "error": "New account creation is disabled. Please contact your site administrator"
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            user = User.objects.create(
-                email=email,
-                username=uuid.uuid4().hex,
-                password=make_password(password),
-                is_password_autoset=False,
-            )
-
         # settings last active for the user
         user.is_active = True
         user.last_active = timezone.now()

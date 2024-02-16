@@ -55,13 +55,42 @@ x-app-env : &app-env
     - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-"secret-key"}
     - BUCKET_NAME=${BUCKET_NAME:-uploads}
     - FILE_SIZE_LIMIT=${FILE_SIZE_LIMIT:-5242880}
+# LDAP Configuration
+    - LDAP_ENABLED=${LDAP_ENABLED:-1}
+    - LDAP_RESTRICT_GROUP=${LDAP_RESTRICT_GROUP:-0}
 
+# LDAP server URI
+    - AUTH_LDAP_SERVER_URI=${AUTH_LDAP_SERVER_URI:-""}
+
+# '1' to use Start TLS, '0' to not use
+    - AUTH_LDAP_START_TLS=${AUTH_LDAP_START_TLS:-0}
+
+# DN and Password for binding to the LDAP server (if required)
+    - AUTH_LDAP_BIND_DN=${AUTH_LDAP_BIND_DN:-""}
+    - AUTH_LDAP_BIND_PASSWORD=${AUTH_LDAP_BIND_PASSWORD:-""}
+
+# Base DN for searching users and the filter string
+    - AUTH_LDAP_USER_SEARCH_BASE=${AUTH_LDAP_USER_SEARCH_BASE:-""}
+    - AUTH_LDAP_USER_SEARCH_FILTER=${AUTH_LDAP_USER_SEARCH_FILTER:-""}
+
+# Mapping of LDAP user attributes to Django User model fields
+    - AUTH_LDAP_USER_ATTR_MAP_USERNAME=${AUTH_LDAP_USER_ATTR_MAP_USERNAME:-""}
+    - AUTH_LDAP_USER_ATTR_MAP_EMAIL=${AUTH_LDAP_USER_ATTR_MAP_EMAIL:-""}
+    - AUTH_LDAP_USER_ATTR_MAP_FIRST_NAME=${AUTH_LDAP_USER_ATTR_MAP_FIRST_NAME:-""}
+    - AUTH_LDAP_USER_ATTR_MAP_LAST_NAME=${AUTH_LDAP_USER_ATTR_MAP_LAST_NAME:-""}
+
+# Base DN for searching groups and the filter string
+    - AUTH_LDAP_GROUP_SEARCH_BASE=${AUTH_LDAP_GROUP_SEARCH_BASE:-""}
+    - AUTH_LDAP_GROUP_SEARCH_FILTER=${AUTH_LDAP_GROUP_SEARCH_FILTER:-""}
+
+# Group DN required for a user to authenticate
+    - AUTH_LDAP_REQUIRE_GROUP=${AUTH_LDAP_REQUIRE_GROUP:-""}
 
 
 services:
   web:
     <<: *app-env
-    image: ${DOCKERHUB_USER:-makeplane}/plane-frontend:${APP_RELEASE:-latest}
+    image: johannmnn/planeplus-frontend:${APP_RELEASE:-latest}
     pull_policy: ${PULL_POLICY:-always}
     restart: unless-stopped
     command: /usr/local/bin/start.sh web/server.js web
@@ -73,7 +102,7 @@ services:
 
   space:
     <<: *app-env
-    image: ${DOCKERHUB_USER:-makeplane}/plane-space:${APP_RELEASE:-latest}
+    image: johannmnn/planeplus-space:${APP_RELEASE:-latest}
     pull_policy: ${PULL_POLICY:-always}
     restart: unless-stopped
     command: /usr/local/bin/start.sh space/server.js space
@@ -86,7 +115,7 @@ services:
 
   api:
     <<: *app-env
-    image: ${DOCKERHUB_USER:-makeplane}/plane-backend:${APP_RELEASE:-latest}
+    image: johannmnn/planeplus-backend:${APP_RELEASE:-latest}
     pull_policy: ${PULL_POLICY:-always}
     restart: unless-stopped
     command: ./bin/takeoff
@@ -98,7 +127,7 @@ services:
 
   worker:
     <<: *app-env
-    image: ${DOCKERHUB_USER:-makeplane}/plane-backend:${APP_RELEASE:-latest}
+    image: johannmnn/planeplus-backend:${APP_RELEASE:-latest}
     pull_policy: ${PULL_POLICY:-always}
     restart: unless-stopped
     command: ./bin/worker
@@ -109,7 +138,7 @@ services:
 
   beat-worker:
     <<: *app-env
-    image: ${DOCKERHUB_USER:-makeplane}/plane-backend:${APP_RELEASE:-latest}
+    image: johannmnn/planeplus-backend:${APP_RELEASE:-latest}
     pull_policy: ${PULL_POLICY:-always}
     restart: unless-stopped
     command: ./bin/beat
@@ -120,7 +149,7 @@ services:
 
   migrator:
     <<: *app-env
-    image: ${DOCKERHUB_USER:-makeplane}/plane-backend:${APP_RELEASE:-latest}
+    image: johannmnn/planeplus-backend:${APP_RELEASE:-latest}
     pull_policy: ${PULL_POLICY:-always}
     restart: no
     command: >
@@ -159,7 +188,7 @@ services:
   # Comment this if you already have a reverse proxy running
   proxy:
     <<: *app-env
-    image: ${DOCKERHUB_USER:-makeplane}/plane-proxy:${APP_RELEASE:-latest}
+    image: johannmnn/planeplus-proxy:${APP_RELEASE:-latest}
     pull_policy: ${PULL_POLICY:-always}
     ports:
         - ${NGINX_PORT}:80

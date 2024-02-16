@@ -4,16 +4,16 @@ Thank you for showing an interest in contributing to Plane! All kinds of contrib
 
 ## Submitting an issue
 
-Before submitting a new issue, please search the [issues](https://github.com/makeplane/plane/issues) tab. Maybe an issue or discussion already exists and might inform you of workarounds. Otherwise, you can give new informplaneation.
+Before submitting a new issue, please search the [issues](https://github.com/etaxi341/planeplus/issues) tab. Maybe an issue or discussion already exists and might inform you of workarounds. Otherwise, you can give new informplaneation.
 
-While we want to fix all the [issues](https://github.com/makeplane/plane/issues), before fixing a bug we need to be able to reproduce and confirm it. Please provide us with a minimal reproduction scenario using a repository or [Gist](https://gist.github.com/). Having a live, reproducible scenario gives us the information without asking questions back & forth with additional questions like:
+While we want to fix all the [issues](https://github.com/etaxi341/planeplus/issues), before fixing a bug we need to be able to reproduce and confirm it. Please provide us with a minimal reproduction scenario using a repository or [Gist](https://gist.github.com/). Having a live, reproducible scenario gives us the information without asking questions back & forth with additional questions like:
 
 - 3rd-party libraries being used and their versions
 - a use-case that fails
 
-Without said minimal reproduction, we won't be able to investigate all [issues](https://github.com/makeplane/plane/issues), and the issue might not be resolved.
+Without said minimal reproduction, we won't be able to investigate all [issues](https://github.com/etaxi341/planeplus/issues), and the issue might not be resolved.
 
-You can open a new issue with this [issue form](https://github.com/makeplane/plane/issues/new).
+You can open a new issue with this [issue form](https://github.com/etaxi341/planeplus/issues/new).
 
 ## Projects setup and Architecture
 
@@ -33,7 +33,7 @@ The backend is a django project which is kept inside apiserver
 1. Clone the repo
 
 ```bash
-git clone https://github.com/makeplane/plane.git [folder-name]
+git clone https://github.com/etaxi341/planeplus.git [folder-name]
 cd [folder-name]
 chmod +x setup.sh
 ```
@@ -53,7 +53,7 @@ docker compose -f docker-compose-local.yml up
 
 ## Missing a Feature?
 
-If a feature is missing, you can directly _request_ a new one [here](https://github.com/makeplane/plane/issues/new?assignees=&labels=feature&template=feature_request.yml&title=%F0%9F%9A%80+Feature%3A+). You also can do the same by choosing "🚀 Feature" when raising a [New Issue](https://github.com/makeplane/plane/issues/new/choose) on our GitHub Repository.
+If a feature is missing, you can directly _request_ a new one [here](https://github.com/etaxi341/planeplus/issues/new?assignees=&labels=feature&template=feature_request.yml&title=%F0%9F%9A%80+Feature%3A+). You also can do the same by choosing "🚀 Feature" when raising a [New Issue](https://github.com/etaxi341/planeplus/issues/new/choose) on our GitHub Repository.
 If you would like to _implement_ it, an issue with your proposal must be submitted first, to be sure that we can use it. Please consider the guidelines given below.
 
 ## Coding guidelines
@@ -71,7 +71,7 @@ Questions, suggestions, and thoughts are most welcome. We can also be reached in
 
 - Try Plane Cloud and the self hosting platform and give feedback
 - Add new integrations
-- Help with open [issues](https://github.com/makeplane/plane/issues) or [create your own](https://github.com/makeplane/plane/issues/new/choose)
+- Help with open [issues](https://github.com/etaxi341/planeplus/issues) or [create your own](https://github.com/etaxi341/planeplus/issues/new/choose)
 - Share your thoughts and suggestions with us
 - Help create tutorials and blog posts
 - Request a feature by submitting a proposal
