@@ -6,9 +6,7 @@ on:
     branches:
       - master
       - preview
-      - qa
       - develop
-      - release-*
   release:
     types: [released, prereleased]
 
@@ -17,7 +15,6 @@ env:
 
 jobs:
   branch_build_setup:
-    if: ${{ (github.event_name == 'pull_request' && github.event.action =='closed' && github.event.pull_request.merged == true) || github.event_name == 'release' }}
     name: Build-Push Web/Space/API/Proxy Docker Image
     runs-on: ubuntu-latest
     outputs:
@@ -55,7 +52,7 @@ jobs:
       BUILDX_PLATFORMS: ${{ needs.branch_build_setup.outputs.gh_buildx_platforms }}
       BUILDX_ENDPOINT: ${{ needs.branch_build_setup.outputs.gh_buildx_endpoint }}
     steps:
-      - name: Set Frontend Docker Tag 
+      - name: Set Frontend Docker Tag
         run: |
           if [ "${{ github.event_name }}" == "release" ]; then
             TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-frontend:latest,${{ secrets.DOCKERHUB_USERNAME }}/planeplus-frontend:${{ github.event.release.tag_name }}
@@ -71,10 +68,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Downloading Web Source Code
-        uses: actions/download-artifact@v3
-        with:
-          name: web-src-code
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -87,7 +80,7 @@ jobs:
         uses: actions/checkout@v4.1.1
 
       - name: Build and Push Frontend to Docker Container Registry
-        uses: docker/build-push-action@v4.0.0
+        uses: docker/build-push-action@v5.1.0
         with:
           context: .
           file: ./web/Dockerfile.web
@@ -110,7 +103,7 @@ jobs:
       BUILDX_PLATFORMS: ${{ needs.branch_build_setup.outputs.gh_buildx_platforms }}
       BUILDX_ENDPOINT: ${{ needs.branch_build_setup.outputs.gh_buildx_endpoint }}
     steps:
-      - name: Set Space Docker Tag 
+      - name: Set Space Docker Tag
         run: |
           if [ "${{ github.event_name }}" == "release" ]; then
             TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-space:latest,${{ secrets.DOCKERHUB_USERNAME }}/planeplus-space:${{ github.event.release.tag_name }}
@@ -126,10 +119,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Downloading Space Source Code
-        uses: actions/download-artifact@v3
-        with:
-          name: space-src-code
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -142,7 +131,7 @@ jobs:
         uses: actions/checkout@v4.1.1
 
       - name: Build and Push Space to Docker Hub
-        uses: docker/build-push-action@v4.0.0
+        uses: docker/build-push-action@v5.1.0
         with:
           context: .
           file: ./space/Dockerfile.space
@@ -165,7 +154,7 @@ jobs:
       BUILDX_PLATFORMS: ${{ needs.branch_build_setup.outputs.gh_buildx_platforms }}
       BUILDX_ENDPOINT: ${{ needs.branch_build_setup.outputs.gh_buildx_endpoint }}
     steps:
-      - name: Set Backend Docker Tag 
+      - name: Set Backend Docker Tag
         run: |
           if [ "${{ github.event_name }}" == "release" ]; then
             TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-backend:latest,${{ secrets.DOCKERHUB_USERNAME }}/planeplus-backend:${{ github.event.release.tag_name }}
@@ -181,10 +170,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Downloading Backend Source Code
-        uses: actions/download-artifact@v3
-        with:
-          name: backend-src-code
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -197,7 +182,7 @@ jobs:
         uses: actions/checkout@v4.1.1
 
       - name: Build and Push Backend to Docker Hub
-        uses: docker/build-push-action@v4.0.0
+        uses: docker/build-push-action@v5.1.0
         with:
           context: ./apiserver
           file: ./apiserver/Dockerfile.api
@@ -221,7 +206,7 @@ jobs:
       BUILDX_PLATFORMS: ${{ needs.branch_build_setup.outputs.gh_buildx_platforms }}
       BUILDX_ENDPOINT: ${{ needs.branch_build_setup.outputs.gh_buildx_endpoint }}
     steps:
-      - name: Set Proxy Docker Tag 
+      - name: Set Proxy Docker Tag
         run: |
           if [ "${{ github.event_name }}" == "release" ]; then
             TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-proxy:latest,${{ secrets.DOCKERHUB_USERNAME }}/planeplus-proxy:${{ github.event.release.tag_name }}
@@ -249,7 +234,7 @@ jobs:
         uses: actions/checkout@v4.1.1
 
       - name: Build and Push Plane-Proxy to Docker Hub
-        uses: docker/build-push-action@v4.0.0
+        uses: docker/build-push-action@v5.1.0
         with:
           context: ./nginx
           file: ./nginx/Dockerfile
@@ -260,4 +245,3 @@ jobs:
           DOCKER_BUILDKIT: 1
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
-
