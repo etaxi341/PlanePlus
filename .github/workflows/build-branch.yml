@@ -31,7 +31,7 @@ jobs:
       - id: set_env_variables
         name: Set Environment Variables
         run: |
-          if [ "${{ env.TARGET_BRANCH }}" == "master" ]; then
+          if [ "${{ env.TARGET_BRANCH }}" == "master" ] || [ "${{ github.event_name }}" == "release" ]; then
             echo "BUILDX_DRIVER=cloud" >> $GITHUB_OUTPUT
             echo "BUILDX_VERSION=lab:latest" >> $GITHUB_OUTPUT
             echo "BUILDX_PLATFORMS=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
@@ -57,7 +57,7 @@ jobs:
     steps:
       - name: Set Frontend Docker Tag 
         run: |
-          if [ "${{ env.TARGET_BRANCH }}" == "master" ] && [ "${{ github.event_name }}" == "release" ]; then
+          if [ "${{ github.event_name }}" == "release" ]; then
             TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-frontend:latest,${{ secrets.DOCKERHUB_USERNAME }}/planeplus-frontend:${{ github.event.release.tag_name }}
           elif [ "${{ env.TARGET_BRANCH }}" == "master" ]; then
             TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-frontend:stable
@@ -112,7 +112,7 @@ jobs:
     steps:
       - name: Set Space Docker Tag 
         run: |
-          if [ "${{ env.TARGET_BRANCH }}" == "master" ] && [ "${{ github.event_name }}" == "release" ]; then
+          if [ "${{ github.event_name }}" == "release" ]; then
             TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-space:latest,${{ secrets.DOCKERHUB_USERNAME }}/planeplus-space:${{ github.event.release.tag_name }}
           elif [ "${{ env.TARGET_BRANCH }}" == "master" ]; then
             TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-space:stable
@@ -167,7 +167,7 @@ jobs:
     steps:
       - name: Set Backend Docker Tag 
         run: |
-          if [ "${{ env.TARGET_BRANCH }}" == "master" ] && [ "${{ github.event_name }}" == "release" ]; then
+          if [ "${{ github.event_name }}" == "release" ]; then
             TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-backend:latest,${{ secrets.DOCKERHUB_USERNAME }}/planeplus-backend:${{ github.event.release.tag_name }}
           elif [ "${{ env.TARGET_BRANCH }}" == "master" ]; then
             TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-backend:stable
@@ -223,7 +223,7 @@ jobs:
     steps:
       - name: Set Proxy Docker Tag 
         run: |
-          if [ "${{ env.TARGET_BRANCH }}" == "master" ] && [ "${{ github.event_name }}" == "release" ]; then
+          if [ "${{ github.event_name }}" == "release" ]; then
             TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-proxy:latest,${{ secrets.DOCKERHUB_USERNAME }}/planeplus-proxy:${{ github.event.release.tag_name }}
           elif [ "${{ env.TARGET_BRANCH }}" == "master" ]; then
             TAG=${{ secrets.DOCKERHUB_USERNAME }}/planeplus-proxy:stable
