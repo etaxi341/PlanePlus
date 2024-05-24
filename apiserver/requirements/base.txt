@@ -30,6 +30,7 @@ sentry-sdk==2.0.1
 # storage
 django-storages==1.14.2
 # user management
+django-auth-ldap==4.3.0
 django-crum==0.7.9
 # web server
 uvicorn==0.29.0
