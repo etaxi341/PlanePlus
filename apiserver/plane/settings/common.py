@@ -91,7 +91,7 @@ LDAP_ENABLED = os.environ.get("LDAP_ENABLED", "0") == "1"
 if LDAP_ENABLED:
     AUTHENTICATION_BACKENDS = (
         'django_auth_ldap.backend.LDAPBackend',
-        "django.contrib.auth.backends.ModelBackend",  # default
+        #"django.contrib.auth.backends.ModelBackend",  # default
         # "guardian.backends.ObjectPermissionBackend",
     )
 else:
