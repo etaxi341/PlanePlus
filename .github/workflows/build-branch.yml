@@ -17,6 +17,7 @@ jobs:
     name: Build Setup
     runs-on: ubuntu-latest
     outputs:
+      gh_branch_name: ${{ steps.set_env_variables.outputs.TARGET_BRANCH }}
       build_proxy: ${{ steps.changed_files.outputs.proxy_any_changed }}
       build_apiserver: ${{ steps.changed_files.outputs.apiserver_any_changed }}
       build_admin: ${{ steps.changed_files.outputs.admin_any_changed }}
@@ -24,6 +25,11 @@ jobs:
       build_web: ${{ steps.changed_files.outputs.web_any_changed }}
 
     steps:
+      - id: set_env_variables
+        name: Set Environment Variables
+        run: |
+          echo "TARGET_BRANCH=${{ env.TARGET_BRANCH }}" >> $GITHUB_OUTPUT
+
       - id: checkout_files
         name: Checkout Files
         uses: actions/checkout@v4
@@ -60,91 +66,201 @@ jobs:
               - 'turbo.json'
 
   branch_build_push_web:
-    if: ${{ needs.branch_build_setup.outputs.build_web == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'release' || github.ref == 'refs/heads/master' }}
-    runs-on: ubuntu-latest
+    if: ${{ needs.branch_build_setup.outputs.build_web == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'release' || needs.branch_build_setup.outputs.gh_branch_name == 'master' }}
+    runs-on: ubuntu-20.04
     needs: [branch_build_setup]
     env:
-      FRONTEND_TAG: johannmnn/planeplus-frontend:${{ github.ref_name }}
+      FRONTEND_TAG: johannmnn/planeplus-frontend:${{ needs.branch_build_setup.outputs.gh_branch_name }}
+      TARGET_BRANCH: ${{ needs.branch_build_setup.outputs.gh_branch_name }}
     steps:
-      - name: Checkout repo
+      - name: Set Frontend Docker Tag
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            TAG=johannmnn/planeplus-frontend:stable,johannmnn/planeplus-frontend:${{ github.event.release.tag_name }}
+          elif [ "${{ env.TARGET_BRANCH }}" == "master" ]; then
+            TAG=johannmnn/planeplus-frontend:latest
+          else
+            TAG=${{ env.FRONTEND_TAG }}
+          fi
+          echo "FRONTEND_TAG=${TAG}" >> $GITHUB_ENV
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Check out the repo
         uses: actions/checkout@v4
 
-      - name: Build and Push Frontend to Docker Hub
-        run: |
-          docker build -t ${{ env.FRONTEND_TAG }} -f ./web/Dockerfile.web ./web
-          docker push ${{ env.FRONTEND_TAG }}
+      - name: Build and Push Frontend to Docker Container Registry
+        uses: docker/build-push-action@v5.1.0
+        with:
+          context: .
+          file: ./web/Dockerfile.web
+          tags: ${{ env.FRONTEND_TAG }}
+          push: true
         env:
+          DOCKER_BUILDKIT: 1
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
 
   branch_build_push_admin:
-    if: ${{ needs.branch_build_setup.outputs.build_admin == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'release' || github.ref == 'refs/heads/master' }}
-    runs-on: ubuntu-latest
+    if: ${{ needs.branch_build_setup.outputs.build_admin== 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'release' || needs.branch_build_setup.outputs.gh_branch_name == 'master' }}
+    runs-on: ubuntu-20.04
     needs: [branch_build_setup]
     env:
-      ADMIN_TAG: johannmnn/planeplus-admin:${{ github.ref_name }}
+      ADMIN_TAG: johannmnn/planeplus-admin:${{ needs.branch_build_setup.outputs.gh_branch_name }}
+      TARGET_BRANCH: ${{ needs.branch_build_setup.outputs.gh_branch_name }}
     steps:
-      - name: Checkout repo
+      - name: Set Admin Docker Tag
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            TAG=johannmnn/planeplus-admin:stable,johannmnn/planeplus-admin:${{ github.event.release.tag_name }}
+          elif [ "${{ env.TARGET_BRANCH }}" == "master" ]; then
+            TAG=johannmnn/planeplus-admin:latest
+          else
+            TAG=${{ env.ADMIN_TAG }}
+          fi
+          echo "ADMIN_TAG=${TAG}" >> $GITHUB_ENV
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Check out the repo
         uses: actions/checkout@v4
 
-      - name: Build and Push Admin to Docker Hub
-        run: |
-          docker build -t ${{ env.ADMIN_TAG }} -f ./admin/Dockerfile.admin ./admin
-          docker push ${{ env.ADMIN_TAG }}
+      - name: Build and Push Frontend to Docker Container Registry
+        uses: docker/build-push-action@v5.1.0
+        with:
+          context: .
+          file: ./admin/Dockerfile.admin
+          tags: ${{ env.ADMIN_TAG }}
+          push: true
         env:
+          DOCKER_BUILDKIT: 1
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
 
   branch_build_push_space:
-    if: ${{ needs.branch_build_setup.outputs.build_space == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'release' || github.ref == 'refs/heads/master' }}
-    runs-on: ubuntu-latest
+    if: ${{ needs.branch_build_setup.outputs.build_space == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'release' || needs.branch_build_setup.outputs.gh_branch_name == 'master' }}
+    runs-on: ubuntu-20.04
     needs: [branch_build_setup]
     env:
-      SPACE_TAG: johannmnn/planeplus-space:${{ github.ref_name }}
+      SPACE_TAG: johannmnn/planeplus-space:${{ needs.branch_build_setup.outputs.gh_branch_name }}
+      TARGET_BRANCH: ${{ needs.branch_build_setup.outputs.gh_branch_name }}
     steps:
-      - name: Checkout repo
+      - name: Set Space Docker Tag
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            TAG=johannmnn/planeplus-space:stable,johannmnn/planeplus-space:${{ github.event.release.tag_name }}
+          elif [ "${{ env.TARGET_BRANCH }}" == "master" ]; then
+            TAG=johannmnn/planeplus-space:latest
+          else
+            TAG=${{ env.SPACE_TAG }}
+          fi
+          echo "SPACE_TAG=${TAG}" >> $GITHUB_ENV
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Check out the repo
         uses: actions/checkout@v4
 
       - name: Build and Push Space to Docker Hub
-        run: |
-          docker build -t ${{ env.SPACE_TAG }} -f ./space/Dockerfile.space ./space
-          docker push ${{ env.SPACE_TAG }}
+        uses: docker/build-push-action@v5.1.0
+        with:
+          context: .
+          file: ./space/Dockerfile.space
+          tags: ${{ env.SPACE_TAG }}
+          push: true
         env:
+          DOCKER_BUILDKIT: 1
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
 
   branch_build_push_apiserver:
-    if: ${{ needs.branch_build_setup.outputs.build_apiserver == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'release' || github.ref == 'refs/heads/master' }}
-    runs-on: ubuntu-latest
+    if: ${{ needs.branch_build_setup.outputs.build_apiserver == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'release' || needs.branch_build_setup.outputs.gh_branch_name == 'master' }}
+    runs-on: ubuntu-20.04
     needs: [branch_build_setup]
     env:
-      BACKEND_TAG: johannmnn/planeplus-backend:${{ github.ref_name }}
+      BACKEND_TAG: johannmnn/planeplus-backend:${{ needs.branch_build_setup.outputs.gh_branch_name }}
+      TARGET_BRANCH: ${{ needs.branch_build_setup.outputs.gh_branch_name }}
     steps:
-      - name: Checkout repo
+      - name: Set Backend Docker Tag
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            TAG=johannmnn/planeplus-backend:stable,johannmnn/planeplus-backend:${{ github.event.release.tag_name }}
+          elif [ "${{ env.TARGET_BRANCH }}" == "master" ]; then
+            TAG=johannmnn/planeplus-backend:latest
+          else
+            TAG=${{ env.BACKEND_TAG }}
+          fi
+          echo "BACKEND_TAG=${TAG}" >> $GITHUB_ENV
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Check out the repo
         uses: actions/checkout@v4
 
       - name: Build and Push Backend to Docker Hub
-        run: |
-          docker build -t ${{ env.BACKEND_TAG }} -f ./apiserver/Dockerfile.apiserver ./apiserver
-          docker push ${{ env.BACKEND_TAG }}
+        uses: docker/build-push-action@v5.1.0
+        with:
+          context: ./apiserver
+          file: ./apiserver/Dockerfile.api
+          push: true
+          tags: ${{ env.BACKEND_TAG }}
         env:
+          DOCKER_BUILDKIT: 1
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
 
   branch_build_push_proxy:
-    if: ${{ needs.branch_build_setup.outputs.build_proxy == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'release' || github.ref == 'refs/heads/master' }}
-    runs-on: ubuntu-latest
+    if: ${{ needs.branch_build_setup.outputs.build_proxy == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'release' || needs.branch_build_setup.outputs.gh_branch_name == 'master' }}
+    runs-on: ubuntu-20.04
     needs: [branch_build_setup]
     env:
-      PROXY_TAG: johannmnn/planeplus-proxy:${{ github.ref_name }}
+      PROXY_TAG: johannmnn/planeplus-proxy:${{ needs.branch_build_setup.outputs.gh_branch_name }}
+      TARGET_BRANCH: ${{ needs.branch_build_setup.outputs.gh_branch_name }}
     steps:
-      - name: Checkout repo
+      - name: Set Proxy Docker Tag
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            TAG=johannmnn/planeplus-proxy:stable,johannmnn/planeplus-proxy:${{ github.event.release.tag_name }}
+          elif [ "${{ env.TARGET_BRANCH }}" == "master" ]; then
+            TAG=johannmnn/planeplus-proxy:latest
+          else
+            TAG=${{ env.PROXY_TAG }}
+          fi
+          echo "PROXY_TAG=${TAG}" >> $GITHUB_ENV
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Check out the repo
         uses: actions/checkout@v4
 
-      - name: Build and Push Proxy to Docker Hub
-        run: |
-          docker build -t ${{ env.PROXY_TAG }} -f ./nginx/Dockerfile.nginx ./nginx
-          docker push ${{ env.PROXY_TAG }}
+      - name: Build and Push Plane-Proxy to Docker Hub
+        uses: docker/build-push-action@v5.1.0
+        with:
+          context: ./nginx
+          file: ./nginx/Dockerfile
+          tags: ${{ env.PROXY_TAG }}
+          push: true
         env:
+          DOCKER_BUILDKIT: 1
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
