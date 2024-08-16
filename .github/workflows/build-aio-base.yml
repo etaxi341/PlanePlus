@@ -44,7 +44,7 @@ jobs:
             echo "BUILDX_DRIVER=cloud" >> $GITHUB_OUTPUT
             echo "BUILDX_VERSION=lab:latest" >> $GITHUB_OUTPUT
             echo "BUILDX_PLATFORMS=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
-            echo "BUILDX_ENDPOINT=etaxi341/planeplus-dev" >> $GITHUB_OUTPUT
+            echo "BUILDX_ENDPOINT=makeplane/plane-dev" >> $GITHUB_OUTPUT
           else
             echo "BUILDX_DRIVER=docker-container" >> $GITHUB_OUTPUT
             echo "BUILDX_VERSION=latest" >> $GITHUB_OUTPUT
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [base_build_setup]
     env:
-      BASE_IMG_TAG: etaxi341/planeplus-aio-base:full-${{ needs.base_build_setup.outputs.image_tag }}
+      BASE_IMG_TAG: makeplane/plane-aio-base:full-${{ needs.base_build_setup.outputs.image_tag }}
       BUILDX_DRIVER: ${{ needs.base_build_setup.outputs.gh_buildx_driver }}
       BUILDX_VERSION: ${{ needs.base_build_setup.outputs.gh_buildx_version }}
       BUILDX_PLATFORMS: ${{ needs.base_build_setup.outputs.gh_buildx_platforms }}
@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [base_build_setup]
     env:
-      BASE_IMG_TAG: etaxi341/planeplus-aio-base:slim-${{ needs.base_build_setup.outputs.image_tag }}
+      BASE_IMG_TAG: makeplane/plane-aio-base:slim-${{ needs.base_build_setup.outputs.image_tag }}
       BUILDX_DRIVER: ${{ needs.base_build_setup.outputs.gh_buildx_driver }}
       BUILDX_VERSION: ${{ needs.base_build_setup.outputs.gh_buildx_version }}
       BUILDX_PLATFORMS: ${{ needs.base_build_setup.outputs.gh_buildx_platforms }}

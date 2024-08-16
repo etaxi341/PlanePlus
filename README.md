@@ -13,7 +13,7 @@
 <a href="https://discord.com/invite/A92xrEGCge">
 <img alt="Discord online members" src="https://img.shields.io/discord/1031547764020084846?color=5865F2&label=Discord&style=for-the-badge" />
 </a>
-<img alt="Commit activity per month" src="https://img.shields.io/github/commit-activity/m/etaxi341/planeplus?style=for-the-badge" />
+<img alt="Commit activity per month" src="https://img.shields.io/github/commit-activity/m/makeplane/plane?style=for-the-badge" />
 </p>
 
 <p align="center">
@@ -82,7 +82,7 @@ Setting up local environment is extremely easy and straight forward. Follow the 
 
 1. Clone the code locally using:
    ```
-   git clone https://github.com/etaxi341/planeplus.git
+   git clone https://github.com/makeplane/plane.git
    ```
 2. Switch to the code folder:
    ```
@@ -110,7 +110,7 @@ Thats it!
 
 ## ❤️ Community
 
-The Plane community can be found on [GitHub Discussions](https://github.com/orgs/makeplane/discussions), and our [Discord server](https://discord.com/invite/A92xrEGCge). Our [Code of conduct](https://github.com/etaxi341/planeplus/blob/master/CODE_OF_CONDUCT.md) applies to all Plane community chanels.
+The Plane community can be found on [GitHub Discussions](https://github.com/orgs/makeplane/discussions), and our [Discord server](https://discord.com/invite/A92xrEGCge). Our [Code of conduct](https://github.com/makeplane/plane/blob/master/CODE_OF_CONDUCT.md) applies to all Plane community chanels.
 
 Ask questions, report bugs, join discussions, voice ideas, make feature requests, or share your projects.
 
@@ -186,13 +186,13 @@ Email squawk@plane.so to disclose any security vulnerabilities.
 
 There are many ways to contribute to Plane, including:
 
-- Submitting [bugs](https://github.com/etaxi341/planeplus/issues/new?assignees=srinivaspendem%2Cpushya22&labels=%F0%9F%90%9Bbug&projects=&template=--bug-report.yaml&title=%5Bbug%5D%3A+) and [feature requests](https://github.com/etaxi341/planeplus/issues/new?assignees=srinivaspendem%2Cpushya22&labels=%E2%9C%A8feature&projects=&template=--feature-request.yaml&title=%5Bfeature%5D%3A+) for various components.
-- Reviewing [the documentation](https://docs.plane.so/) and submitting [pull requests](https://github.com/etaxi341/planeplus), from fixing typos to adding new features.
+- Submitting [bugs](https://github.com/makeplane/plane/issues/new?assignees=srinivaspendem%2Cpushya22&labels=%F0%9F%90%9Bbug&projects=&template=--bug-report.yaml&title=%5Bbug%5D%3A+) and [feature requests](https://github.com/makeplane/plane/issues/new?assignees=srinivaspendem%2Cpushya22&labels=%E2%9C%A8feature&projects=&template=--feature-request.yaml&title=%5Bfeature%5D%3A+) for various components.
+- Reviewing [the documentation](https://docs.plane.so/) and submitting [pull requests](https://github.com/makeplane/plane), from fixing typos to adding new features.
 - Speaking or writing about Plane or any other ecosystem integration and [letting us know](https://discord.com/invite/A92xrEGCge)!
-- Upvoting [popular feature requests](https://github.com/etaxi341/planeplus/issues) to show your support.
+- Upvoting [popular feature requests](https://github.com/makeplane/plane/issues) to show your support.
 
 ### We couldn't have done this without you.
 
-<a href="https://github.com/etaxi341/planeplus/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=etaxi341/planeplus" />
+<a href="https://github.com/makeplane/plane/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=makeplane/plane" />
 </a>

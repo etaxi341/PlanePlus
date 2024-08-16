@@ -48,7 +48,7 @@ jobs:
             echo "BUILDX_DRIVER=cloud" >> $GITHUB_OUTPUT
             echo "BUILDX_VERSION=lab:latest" >> $GITHUB_OUTPUT
             echo "BUILDX_PLATFORMS=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
-            echo "BUILDX_ENDPOINT=etaxi341/planeplus-dev" >> $GITHUB_OUTPUT
+            echo "BUILDX_ENDPOINT=makeplane/plane-dev" >> $GITHUB_OUTPUT
 
             echo "AIO_BASE_TAG=latest" >> $GITHUB_OUTPUT
           else
@@ -93,7 +93,7 @@ jobs:
     env:
       BUILD_TYPE: full
       AIO_BASE_TAG: ${{ needs.branch_build_setup.outputs.aio_base_tag }}
-      AIO_IMAGE_TAGS: etaxi341/planeplus-aio:full-${{ needs.branch_build_setup.outputs.flat_branch_name }}
+      AIO_IMAGE_TAGS: makeplane/plane-aio:full-${{ needs.branch_build_setup.outputs.flat_branch_name }}
       TARGET_BRANCH: ${{ needs.branch_build_setup.outputs.gh_branch_name }}
       BUILDX_DRIVER: ${{ needs.branch_build_setup.outputs.gh_buildx_driver }}
       BUILDX_VERSION: ${{ needs.branch_build_setup.outputs.gh_buildx_version }}
@@ -103,9 +103,9 @@ jobs:
       - name: Set Docker Tag
         run: |
           if [ "${{ github.event_name }}" == "release" ]; then
-            TAG=etaxi341/planeplus-aio:${{env.BUILD_TYPE}}-stable,etaxi341/planeplus-aio:${{env.BUILD_TYPE}}-${{ github.event.release.tag_name }}
+            TAG=makeplane/plane-aio:${{env.BUILD_TYPE}}-stable,makeplane/plane-aio:${{env.BUILD_TYPE}}-${{ github.event.release.tag_name }}
           elif [ "${{ env.TARGET_BRANCH }}" == "master" ]; then
-            TAG=etaxi341/planeplus-aio:${{env.BUILD_TYPE}}-latest
+            TAG=makeplane/plane-aio:${{env.BUILD_TYPE}}-latest
           else
             TAG=${{ env.AIO_IMAGE_TAGS }}
           fi
@@ -153,7 +153,7 @@ jobs:
     env:
       BUILD_TYPE: slim
       AIO_BASE_TAG: ${{ needs.branch_build_setup.outputs.aio_base_tag }}
-      AIO_IMAGE_TAGS: etaxi341/planeplus-aio:slim-${{ needs.branch_build_setup.outputs.flat_branch_name }}
+      AIO_IMAGE_TAGS: makeplane/plane-aio:slim-${{ needs.branch_build_setup.outputs.flat_branch_name }}
       TARGET_BRANCH: ${{ needs.branch_build_setup.outputs.gh_branch_name }}
       BUILDX_DRIVER: ${{ needs.branch_build_setup.outputs.gh_buildx_driver }}
       BUILDX_VERSION: ${{ needs.branch_build_setup.outputs.gh_buildx_version }}
@@ -163,9 +163,9 @@ jobs:
       - name: Set Docker Tag
         run: |
           if [ "${{ github.event_name }}" == "release" ]; then
-            TAG=etaxi341/planeplus-aio:${{env.BUILD_TYPE}}-stable,etaxi341/planeplus-aio:${{env.BUILD_TYPE}}-${{ github.event.release.tag_name }}
+            TAG=makeplane/plane-aio:${{env.BUILD_TYPE}}-stable,makeplane/plane-aio:${{env.BUILD_TYPE}}-${{ github.event.release.tag_name }}
           elif [ "${{ env.TARGET_BRANCH }}" == "master" ]; then
-            TAG=etaxi341/planeplus-aio:${{env.BUILD_TYPE}}-latest
+            TAG=makeplane/plane-aio:${{env.BUILD_TYPE}}-latest
           else
             TAG=${{ env.AIO_IMAGE_TAGS }}
           fi

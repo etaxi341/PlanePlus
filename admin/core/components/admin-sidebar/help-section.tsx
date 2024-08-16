@@ -27,7 +27,7 @@ const helpOptions = [
   },
   {
     name: "Report a bug",
-    href: "https://github.com/etaxi341/planeplus/issues/new/choose",
+    href: "https://github.com/makeplane/plane/issues/new/choose",
     Icon: GithubIcon,
   },
 ];

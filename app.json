@@ -1,7 +1,7 @@
 {
   "name": "Plane",
   "description": "Plane helps you track your issues, epics, and product roadmaps.",
-  "repository": "http://github.com/etaxi341/planeplus",
+  "repository": "http://github.com/makeplane/plane",
   "logo": "https://avatars.githubusercontent.com/u/115727700?s=200&v=4",
   "website": "https://plane.so/",
   "success_url": "/",
