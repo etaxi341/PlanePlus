@@ -58,7 +58,7 @@ export const CommandPaletteHelpActions: React.FC<Props> = observer((props) => {
       <Command.Item
         onSelect={() => {
           closePalette();
-          window.open("https://github.com/makeplane/plane/issues/new/choose", "_blank");
+          window.open("https://github.com/etaxi341/planeplus/issues/new/choose", "_blank");
         }}
         className="focus:outline-none"
       >

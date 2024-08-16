@@ -62,7 +62,7 @@ mkdir plane-selfhost
 
 cd plane-selfhost
 
-curl -fsSL -o setup.sh https://raw.githubusercontent.com/makeplane/plane/master/deploy/selfhost/install.sh
+curl -fsSL -o setup.sh https://raw.githubusercontent.com/etaxi341/planeplus/master/deploy/selfhost/install.sh
 
 chmod +x setup.sh
 ```
@@ -364,7 +364,7 @@ When you want to restore the previously backed-up data, follow the instructions 
 1. Download the restore script using the command below. We suggest downloading it in the same folder as `setup.sh`.
 
    ```bash
-   curl -fsSL -o restore.sh https://raw.githubusercontent.com/makeplane/plane/master/deploy/selfhost/restore.sh
+   curl -fsSL -o restore.sh https://raw.githubusercontent.com/etaxi341/planeplus/master/deploy/selfhost/restore.sh
    chmod +x restore.sh
    ```
 
@@ -420,7 +420,7 @@ Begin with downloading the migration script using below command
 
 ```
 
-curl -fsSL -o migrate.sh https://raw.githubusercontent.com/makeplane/plane/master/deploy/selfhost/migration-0.13-0.14.sh
+curl -fsSL -o migrate.sh https://raw.githubusercontent.com/etaxi341/planeplus/master/deploy/selfhost/migration-0.13-0.14.sh
 
 chmod +x migrate.sh
 
