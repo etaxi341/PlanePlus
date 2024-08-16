@@ -74,17 +74,6 @@ class Adapter:
         # Return email
         return email
 
-    def validate_password(self, email):
-        """Validate password strength"""
-        results = zxcvbn(self.code)
-        if results["score"] < 3:
-            raise AuthenticationException(
-                error_code=AUTHENTICATION_ERROR_CODES["INVALID_PASSWORD"],
-                error_message="INVALID_PASSWORD",
-                payload={"email": email},
-            )
-        return
-
     def __check_signup(self, email):
         """Check if sign up is enabled or not and raise exception if not enabled"""
 
@@ -157,13 +146,14 @@ class Adapter:
                 user.is_password_autoset = True
                 user.is_email_verified = True
 
-            # Validate password
-            else:
-                # Validate password
-                self.validate_password(email)
-                # Set password
-                user.set_password(self.code)
-                user.is_password_autoset = False
+            # Passwords? We don't do that here
+            # # Validate password
+            # else:
+            #     # Validate password
+            #     self.validate_password(email)
+            #     # Set password
+            #     user.set_password(self.code)
+            #     user.is_password_autoset = False
 
             # Set user details
             avatar = self.user_data.get("user", {}).get("avatar", "")

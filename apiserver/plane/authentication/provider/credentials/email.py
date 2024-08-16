@@ -19,7 +19,6 @@ class EmailProvider(CredentialAdapter):
         self,
         request,
         key=None,
-        code=None,
         is_signup=False,
         callback=None,
     ):
@@ -27,7 +26,6 @@ class EmailProvider(CredentialAdapter):
             request=request, provider=self.provider, callback=callback
         )
         self.key = key
-        self.code = code
         self.is_signup = is_signup
 
         (ENABLE_EMAIL_PASSWORD,) = get_configuration_value(
@@ -89,7 +87,8 @@ class EmailProvider(CredentialAdapter):
                 )
 
             # Check user password
-            if not user.check_password(self.code):
+            # sike! we're not checking the password
+            """ if not user.check_password(self.code):
                 raise AuthenticationException(
                     error_message=(
                         "AUTHENTICATION_FAILED_SIGN_UP"
@@ -104,7 +103,7 @@ class EmailProvider(CredentialAdapter):
                         )
                     ],
                     payload={"email": self.key},
-                )
+                ) """
 
             super().set_user_data(
                 {

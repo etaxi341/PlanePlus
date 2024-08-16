@@ -118,7 +118,7 @@ export const AuthRoot: FC<TAuthRoot> = observer((props) => {
             setAuthStep(EAuthSteps.PASSWORD);
           }
         } else {
-          if (currentAuthMode === EAuthModes.SIGN_IN) setAuthMode(EAuthModes.SIGN_UP);
+          //if (currentAuthMode === EAuthModes.SIGN_IN) setAuthMode(EAuthModes.SIGN_UP);
           if (response.status === "MAGIC_CODE") {
             setAuthStep(EAuthSteps.UNIQUE_CODE);
             generateEmailUniqueCode(data.email);
@@ -126,7 +126,10 @@ export const AuthRoot: FC<TAuthRoot> = observer((props) => {
             setAuthStep(EAuthSteps.PASSWORD);
           }
         }
-        setIsExistingEmail(response.existing);
+        // we don't want to check whether the e-mail already exists
+        setAuthStep(EAuthSteps.PASSWORD);
+        setAuthMode(EAuthModes.SIGN_IN);
+        setIsExistingEmail(true);
       })
       .catch((error) => {
         const errorhandler = authErrorHandler(error?.error_code?.toString(), data?.email || undefined);

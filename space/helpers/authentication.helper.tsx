@@ -164,14 +164,7 @@ const errorCodeMessages: {
     title: `User does not exist`,
     message: (email = undefined) => (
       <div>
-        No account found.&nbsp;
-        <Link
-          className="underline underline-offset-4 font-medium hover:font-bold transition-all"
-          href={`/${email ? `?email=${encodeURIComponent(email)}` : ``}`}
-        >
-          Create one
-        </Link>
-        &nbsp;to get started.
+        No account found.
       </div>
     ),
   },

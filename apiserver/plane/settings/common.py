@@ -84,7 +84,7 @@ REST_FRAMEWORK = {
 
 # Django Auth Backend
 AUTHENTICATION_BACKENDS = (
-    "django.contrib.auth.backends.ModelBackend",
+    "django_auth_ldap.backend.LDAPBackend",
 )  # default
 
 # Root Urls

@@ -110,16 +110,6 @@ export default function ForgotPasswordPage() {
                 <Image src={logo} alt="Plane logo" />
               </Link>
             </div>
-            <div className="flex flex-col items-end sm:items-center sm:gap-2 sm:flex-row text-center text-sm font-medium text-onboarding-text-300">
-              New to Plane?{" "}
-              <Link
-                href="/"
-                onClick={() => captureEvent(NAVIGATE_TO_SIGNUP, {})}
-                className="font-semibold text-custom-primary-100 hover:underline"
-              >
-                Create an account
-              </Link>
-            </div>
           </div>
           <div className="flex-grow container mx-auto max-w-lg px-10 lg:max-w-md lg:px-5 py-10 lg:pt-28 transition-all">
             <div className="relative flex flex-col space-y-6">
