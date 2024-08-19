@@ -25,8 +25,6 @@ import WhiteHorizontalLogo from "@/public/plane-logos/white-horizontal-with-blue
 
 const HomePage = observer(() => {
   const { resolvedTheme } = useTheme();
-  // hooks
-  const { captureEvent } = useEventTracker();
 
   const logo = resolvedTheme === "light" ? BlackHorizontalLogo : WhiteHorizontalLogo;
 
