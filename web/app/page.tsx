@@ -9,8 +9,6 @@ import { useTheme } from "next-themes";
 // components
 import { AuthRoot } from "@/components/account";
 import { PageHead } from "@/components/core";
-// constants
-import { NAVIGATE_TO_SIGNUP } from "@/constants/event-tracker";
 // helpers
 import { EAuthModes, EPageTypes } from "@/helpers/authentication.helper";
 // hooks

@@ -10,7 +10,7 @@ import { CircleCheck } from "lucide-react";
 // ui
 import { Button, Input, TOAST_TYPE, getButtonStyling, setToast } from "@plane/ui";
 // constants
-import { FORGOT_PASS_LINK, NAVIGATE_TO_SIGNUP } from "@/constants/event-tracker";
+import { FORGOT_PASS_LINK } from "@/constants/event-tracker";
 // helpers
 import { EPageTypes } from "@/helpers/authentication.helper";
 import { cn } from "@/helpers/common.helper";

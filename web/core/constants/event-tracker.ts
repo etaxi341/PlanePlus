@@ -185,7 +185,6 @@ export const PROJECT_MEMBER_ADDED = "Project member added";
 export const PROJECT_MEMBER_LEAVE = "Project member leave";
 export const WORKSPACE_MEMBER_LEAVE = "Workspace member leave";
 // Sign-in & Sign-up Events
-export const NAVIGATE_TO_SIGNUP = "Navigate to sign-up page";
 export const NAVIGATE_TO_SIGNIN = "Navigate to sign-in page";
 export const CODE_VERIFIED = "Code verified";
 export const SETUP_PASSWORD = "Password setup";
