@@ -11,8 +11,6 @@ import { AuthRoot } from "@/components/account";
 import { PageHead } from "@/components/core";
 // helpers
 import { EAuthModes, EPageTypes } from "@/helpers/authentication.helper";
-// hooks
-import { useEventTracker } from "@/hooks/store";
 // layouts
 import DefaultLayout from "@/layouts/default-layout";
 // wrappers

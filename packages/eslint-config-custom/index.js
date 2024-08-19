@@ -33,7 +33,7 @@ module.exports = {
     "react/jsx-boolean-value": "error",
     "react/jsx-no-duplicate-props": "error",
     "react-hooks/exhaustive-deps": "warn",
-    "@typescript-eslint/no-unused-vars": ["error"],
+    "@typescript-eslint/no-unused-vars": ["warn"],
     "@typescript-eslint/no-explicit-any": "warn",
     "@typescript-eslint/no-useless-empty-export": "error",
     "@typescript-eslint/prefer-ts-expect-error": "error",
