@@ -96,7 +96,7 @@ class SignInAuthEndpoint(View):
             return HttpResponseRedirect(url)
 
 
-        conn = ldap.initialize(os.getenv('AUTH_LDAP_SERVER_URI'))
+        conn = ldap.initialize(os.environ.get('AUTH_LDAP_SERVER_URI'))
 
         # attempt binding to the server with the given credentials
         # if incorrect, gtfo
@@ -117,8 +117,8 @@ class SignInAuthEndpoint(View):
             return HttpResponseRedirect(url)
 
         # check if the user put in @swg.de domain, if not correct it
-        if email.split('@')[1] != os.getenv('ALLOWED_EMAIL_DOMAIN'):
-            email = email.split('@')[0] + '@' + os.getenv('ALLOWED_EMAIL_DOMAIN')
+        if email.split('@')[1] != os.environ.get('ALLOWED_EMAIL_DOMAIN'):
+            email = email.split('@')[0] + '@' + os.environ.get('ALLOWED_EMAIL_DOMAIN')
             
 
         existing_user = User.objects.filter(email=email).first()
