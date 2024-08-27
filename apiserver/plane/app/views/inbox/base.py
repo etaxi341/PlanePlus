@@ -1,5 +1,11 @@
 # Python imports
 import json
+import os
+
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
 
 # Django import
 from django.utils import timezone
@@ -284,6 +290,213 @@ class InboxIssueViewSet(BaseViewSet):
                 origin=request.META.get("HTTP_ORIGIN"),
                 inbox=str(inbox_issue.id),
             )
+
+            # Serialize the request data
+            request_data_str = json.dumps(request.data, indent=4)
+
+            # send the email
+            subject = f"Ticket created - {request.data['issue']['name']}"
+            #issue_title = request_data_str['issue']['name']
+
+            #print(issue_title)
+
+            message = f"""
+            <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office"><head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Updates on issue</title>
+      <style type="text/css" emogrify="no">
+         html {{
+         font-family: system-ui;
+         }}
+         p,
+         h1,
+         h2,
+         h3,
+         h4,
+         ol,
+         ul {{
+         margin: 0;
+         }}
+         h-full {{
+         height: 100%;
+         }}
+         a:hover {{
+         color: #3358d4 !important;
+         }}
+      </style>
+      <style>
+         *[class="gmail-fix"] {{
+         display: none !important;
+         }}
+      </style>
+      <style type="text/css" emogrify="no">
+         @media (max-width: 600px) {{
+         .gmx-killpill {{
+         content: " \03D1";
+         }}
+         }}
+      </style>
+   </head>
+   <body bgcolor="#ffffff" text="#3b3f44" link="#3f76ff" yahoo="fix" style="background-color: #f7f9ff; margin: 20px">
+      <div style="
+         width: 600px;
+         table-layout: fixed;
+         height: 100%;
+         margin-left: auto;
+         margin-right: auto;
+         ">
+         <!-- Header -->
+         <div>
+            <table style="width: 600px" cellspacing="0">
+               <tr>
+                  <td>
+                     <div style="margin-left: 30px; margin-bottom: 20px; margin-top: 20px">
+                        <img src="https://plane-marketing.s3.ap-south-1.amazonaws.com/plane-assets/emails/plane-logo.png" width="130" height="40" border="0">
+                     </div>
+                  </td>
+               </tr>
+            </table>
+         </div>
+         <!-- Body -->
+         <div style="
+            color: #1f2d5c;
+            padding: 30px;
+            border-radius: 4px;
+            background-color: #fcfcfd;
+            max-width: 100%;
+            ">
+            <div>
+               <table style="width: 100%">
+                  <tr>
+                     <td>
+                        <p style="font-size: 1rem; color: #1f2d5c; font-weight: 600">
+                           Ticket created!
+                        </p>
+                     </td>
+                  </tr>
+               </table>
+               <hr style="
+                  background-color: #f0f0f3;
+                  height: 1px;
+                  border: 0;
+                  margin-top: 15px;
+                  margin-bottom: 15px;
+                  ">
+                  <p style="font-size: 1rem;color: #1f2d5c; line-height: 28px">
+                     A new issue was created!
+                     </span>
+                  </p>
+                  
+               <!-- 
+               
+               
+                -->
+                
+               <!-- Outer update Box start -->
+               
+               <div style="
+                  background-color: #f7f9ff;
+                  border-radius: 8px;
+                  border-style: solid;
+                  border-width: 1px;
+                  border-color: #c1d0ff;
+                  padding: 20px;
+                  margin-top: 15px;
+                  max-width: 100%;
+                  ">
+                  <!-- Block Heading -->
+                  <div style="padding-bottom: 20px">
+                     <p style="font-size: 0.8rem; font-weight: 600; color: #121a26">
+                        Ticket
+                     </p>
+                  </div>
+                  <!-- Property Updates -->
+                  <div style="
+                     background-color: white;
+                     max-width: 100%;
+                     overflow: hidden;
+                     overflow-wrap: break-word;
+                     word-wrap: break-word;
+                     padding-left: 15px;
+                     padding-bottom: 15px;
+                     border-radius: 8px;
+                     ">
+                     <tr style="border-radius: 8px; margin-top: 20px">
+                           <td style="width: 30px">                             
+                           </td>
+                           <td style="padding-top: 30px; padding-bottom: 20px">
+                              <p style="
+                                 font-weight: 500;
+                                 font-size: 1.2rem;
+                                 color: #1c2024;
+                                 width: fit-content;
+                                 margin-left: 5px;
+                                 ">
+                               {request.user.first_name} {request.user.last_name}   
+                              </p>
+                           </td>
+                        </tr>
+                     </table>
+                     
+                     <!-- Assignee changed-->
+                     <table role="presentation" style="padding-bottom: 15px; max-width: 100%; padding-right: 10px;">
+                        <tr>
+                           <td valign="top" style="white-space: nowrap; padding: 0px;">
+                           {request.data['issue']['description_html']}
+                              </span>
+                           </td>
+                        </tr>
+                     </table>
+                  </div>
+               </div>
+            </div>
+            <a href="{os.getenv('WEB_URL')}/{slug}/projects/{project_id}/inbox/?currentTab=open&inboxIssueId={str(serializer.data["id"])}" style="text-decoration: none;">
+               <div style="
+                  max-width: min-content;
+                  white-space: nowrap;
+                  background-color: #3e63dd;
+                  padding: 10px 15px;
+                  border: 1px solid #2f4ba8;
+                  border-radius: 4px;
+                  margin-top: 15px;
+                  cursor: pointer;
+                  font-size: 0.8rem;
+                  color: white;
+                  ">
+                  View issue
+               </div>
+            </a>
+         </div>
+      </div>
+   </body>
+</html>
+"""
+            from_addr = os.getenv("MAIL_SENDER")
+            to_addr = os.getenv("MAIL_DIST_LIST")
+            smtpserver = os.getenv("MAIL_SERVER")
+
+            msg = MIMEMultipart()
+            msg['Subject'] = subject
+            msg['From'] = from_addr
+            msg['To'] = ", ".join(to_addr)
+
+            if request.data.get("issue", {}).get("priority", "none") == "urgent":
+                msg['X-Priority'] = '1'
+                msg['X-MSMail-Priority'] = 'High'
+                msg['Importance'] = 'High'
+        
+
+            msg.attach(MIMEText(message, 'html'))
+
+            try:
+                server = smtplib.SMTP(smtpserver)
+                server.sendmail(from_addr, to_addr, msg.as_string()) 
+                server.quit()  
+            except Exception as e:
+                return Response(e, status=status.HTTP_400_BAD_REQUEST)
+
+
             inbox_issue = (
                 InboxIssue.objects.select_related("issue")
                 .prefetch_related(
