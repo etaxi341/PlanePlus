@@ -451,7 +451,7 @@ class InboxIssueViewSet(BaseViewSet):
                   </div>
                </div>
             </div>
-            <a href="{os.getenv('WEB_URL')}/{slug}/projects/{project_id}/inbox/?currentTab=open&inboxIssueId={str(serializer.data["id"])}" style="text-decoration: none;">
+            <a href="{os.environ.get('WEB_URL')}/{slug}/projects/{project_id}/inbox/?currentTab=open&inboxIssueId={str(serializer.data["id"])}" style="text-decoration: none;">
                <div style="
                   max-width: min-content;
                   white-space: nowrap;
@@ -472,9 +472,9 @@ class InboxIssueViewSet(BaseViewSet):
    </body>
 </html>
 """
-            from_addr = os.getenv("MAIL_SENDER")
-            to_addr = os.getenv("MAIL_DIST_LIST")
-            smtpserver = os.getenv("MAIL_SERVER")
+            from_addr = os.environ.get("MAIL_SENDER")
+            to_addr = os.environ.get("MAIL_DIST_LIST")
+            smtpserver = os.environ.get("MAIL_SERVER")
 
             msg = MIMEMultipart()
             msg['Subject'] = subject
