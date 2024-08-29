@@ -472,14 +472,14 @@ class InboxIssueViewSet(BaseViewSet):
    </body>
 </html>
 """
-            from_addr = os.environ.get("MAIL_SENDER")
-            to_addr = os.environ.get("MAIL_DIST_LIST")
-            smtpserver = os.environ.get("MAIL_SERVER")
+            from_addr = os.environ.get('MAIL_SENDER')
+            to_addr = os.environ.get('MAIL_DIST_LIST')
+            smtpserver = os.environ.get('MAIL_SERVER')
 
             msg = MIMEMultipart()
             msg['Subject'] = subject
             msg['From'] = from_addr
-            msg['To'] = ", ".join(to_addr)
+            msg['To'] = to_addr
 
             if request.data.get("issue", {}).get("priority", "none") == "urgent":
                 msg['X-Priority'] = '1'
