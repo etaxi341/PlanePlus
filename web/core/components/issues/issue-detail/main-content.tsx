@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { observer } from "mobx-react";
-// types
-import { TIssue } from "@plane/types";
 // components
 import {
   IssueActivity,
@@ -13,12 +11,14 @@ import {
   IssueTitleInput,
   IssueDescriptionInput,
   IssueDetailWidgets,
+  PeekOverviewProperties,
 } from "@/components/issues";
 // hooks
 import { useIssueDetail, useUser } from "@/hooks/store";
 import useReloadConfirmations from "@/hooks/use-reload-confirmation";
+import useSize from "@/hooks/use-window-size";
 // plane web components
-import { IssueIdentifier } from "@/plane-web/components/issues";
+import { IssueTypeSwitcher } from "@/plane-web/components/issues";
 // types
 import { TIssueOperations } from "./root";
 
@@ -29,14 +29,14 @@ type Props = {
   issueOperations: TIssueOperations;
   isEditable: boolean;
   isArchived: boolean;
-  swrIssueDetails: TIssue | null | undefined;
 };
 
 export const IssueMainContent: React.FC<Props> = observer((props) => {
-  const { workspaceSlug, projectId, issueId, issueOperations, isEditable, isArchived, swrIssueDetails } = props;
+  const { workspaceSlug, projectId, issueId, issueOperations, isEditable, isArchived } = props;
   // states
   const [isSubmitting, setIsSubmitting] = useState<"submitting" | "submitted" | "saved">("saved");
   // hooks
+  const windowSize = useSize();
   const { data: currentUser } = useUser();
   const {
     issue: { getIssueById },
@@ -66,8 +66,8 @@ export const IssueMainContent: React.FC<Props> = observer((props) => {
           />
         )}
 
-        <div className="mb-2.5 flex items-center">
-          <IssueIdentifier issueId={issueId} projectId={issue.project_id} />
+        <div className="mb-2.5 flex items-center justify-between gap-4">
+          <IssueTypeSwitcher issueId={issueId} disabled={isArchived || !isEditable} />
           <IssueUpdateStatus isSubmitting={isSubmitting} />
         </div>
 
@@ -85,7 +85,6 @@ export const IssueMainContent: React.FC<Props> = observer((props) => {
 
         {/* {issue?.description_html === issueDescription && ( */}
         <IssueDescriptionInput
-          swrIssueDescription={swrIssueDetails?.description_html}
           workspaceSlug={workspaceSlug}
           projectId={issue.project_id}
           issueId={issue.id}
@@ -93,7 +92,7 @@ export const IssueMainContent: React.FC<Props> = observer((props) => {
           disabled={!isEditable}
           issueOperations={issueOperations}
           setIsSubmitting={(value) => setIsSubmitting(value)}
-          containerClassName="-ml-3 !mb-6 border-none"
+          containerClassName="-ml-3 border-none"
         />
         {/* )} */}
 
@@ -114,6 +113,16 @@ export const IssueMainContent: React.FC<Props> = observer((props) => {
         issueId={issueId}
         disabled={!isEditable || isArchived}
       />
+
+      {windowSize[0] < 768 && (
+        <PeekOverviewProperties
+          workspaceSlug={workspaceSlug}
+          projectId={projectId}
+          issueId={issueId}
+          issueOperations={issueOperations}
+          disabled={!isEditable || isArchived}
+        />
+      )}
 
       <IssueActivity workspaceSlug={workspaceSlug} projectId={projectId} issueId={issueId} disabled={isArchived} />
     </>

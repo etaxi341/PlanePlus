@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
 import { dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { orderBy, uniqBy } from "lodash";
+import orderBy from "lodash/orderBy";
 import { observer } from "mobx-react";
 import { useParams } from "next/navigation";
 import { ChevronRight, FolderPlus } from "lucide-react";
@@ -33,7 +33,7 @@ export const SidebarFavoritesMenu = observer(() => {
 
   // store hooks
   const { sidebarCollapsed } = useAppTheme();
-  const { favoriteIds, favoriteMap, deleteFavorite, removeFromFavoriteFolder } = useFavorite();
+  const { favoriteIds, groupedFavorites, deleteFavorite, removeFromFavoriteFolder } = useFavorite();
   const { workspaceSlug } = useParams();
 
   const { isMobile } = usePlatformOS();
@@ -108,7 +108,7 @@ export const SidebarFavoritesMenu = observer(() => {
           setIsDragging(false);
           const sourceId = source?.data?.id as string | undefined;
           console.log({ sourceId });
-          if (!sourceId || !favoriteMap[sourceId].parent) return;
+          if (!sourceId || !groupedFavorites[sourceId].parent) return;
           handleRemoveFromFavoritesFolder(sourceId);
         },
       })
@@ -170,19 +170,19 @@ export const SidebarFavoritesMenu = observer(() => {
               static
             >
               {createNewFolder && <NewFavoriteFolder setCreateNewFolder={setCreateNewFolder} actionType="create" />}
-              {Object.keys(favoriteMap).length === 0 ? (
+              {Object.keys(groupedFavorites).length === 0 ? (
                 <>
                   {!sidebarCollapsed && (
-                    <span className="text-custom-text-400 text-xs text-center font-medium py-1">No favorites yet</span>
+                    <span className="text-custom-text-400 text-xs font-medium px-8 py-1.5">No favorites yet</span>
                   )}
                 </>
               ) : (
-                uniqBy(orderBy(Object.values(favoriteMap), "sequence", "desc"), "id")
+                orderBy(Object.values(groupedFavorites), "sequence", "desc")
                   .filter((fav) => !fav.parent)
                   .map((fav, index) => (
                     <Tooltip
                       key={fav.id}
-                      tooltipContent={fav.entity_data ? fav.entity_data.name : fav.name}
+                      tooltipContent={fav?.entity_data ? fav.entity_data?.name : fav?.name}
                       position="right"
                       className="ml-2"
                       disabled={!sidebarCollapsed}
@@ -201,7 +201,7 @@ export const SidebarFavoritesMenu = observer(() => {
                           favorite={fav}
                           handleRemoveFromFavorites={handleRemoveFromFavorites}
                           handleRemoveFromFavoritesFolder={handleRemoveFromFavoritesFolder}
-                          favoriteMap={favoriteMap}
+                          favoriteMap={groupedFavorites}
                         />
                       )}
                     </Tooltip>

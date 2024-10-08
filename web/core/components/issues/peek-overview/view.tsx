@@ -60,7 +60,7 @@ export const IssueView: FC<IIssueView> = observer((props) => {
     isArchiveIssueModalOpen,
     toggleDeleteIssueModal,
     toggleArchiveIssueModal,
-    issue: { getIssueById },
+    issue: { getIssueById, getIsLocalDBIssueDescription },
   } = useIssueDetail();
   const issue = getIssueById(issueId);
   // remove peek id
@@ -68,6 +68,8 @@ export const IssueView: FC<IIssueView> = observer((props) => {
     setPeekIssue(undefined);
     if (embedIssue) embedRemoveCurrentNotification && embedRemoveCurrentNotification();
   };
+
+  const isLocalDBIssueDescription = getIsLocalDBIssueDescription(issueId);
 
   usePeekOverviewOutsideClickDetector(
     issuePeekOverviewRef,
@@ -104,7 +106,7 @@ export const IssueView: FC<IIssueView> = observer((props) => {
       ? "fixed z-20 flex flex-col overflow-hidden rounded border border-custom-border-200 bg-custom-background-100 transition-all duration-300"
       : `w-full h-full`,
     !embedIssue && {
-      "bottom-0 right-0 top-0 w-full md:w-[50%]": peekMode === "side-peek",
+      "bottom-0 right-0 top-0 w-full md:w-[50%] border-0 border-l": peekMode === "side-peek",
       "size-5/6 top-[8.33%] left-[8.33%]": peekMode === "modal",
       "inset-0 m-4": peekMode === "full-screen",
     }
@@ -145,11 +147,12 @@ export const IssueView: FC<IIssueView> = observer((props) => {
                 "0px 4px 8px 0px rgba(0, 0, 0, 0.12), 0px 6px 12px 0px rgba(16, 24, 40, 0.12), 0px 1px 16px 0px rgba(16, 24, 40, 0.12)",
             }}
           >
-            {isLoading && <IssuePeekOverviewLoader removeRoutePeekId={removeRoutePeekId} />}
-            {isError && (
+            {isError ? (
               <div className="relative h-screen w-full overflow-hidden">
                 <IssuePeekOverviewError removeRoutePeekId={removeRoutePeekId} />
               </div>
+            ) : (
+              isLoading && <IssuePeekOverviewLoader removeRoutePeekId={removeRoutePeekId} />
             )}
             {!isLoading && !isError && issue && (
               <>
@@ -178,7 +181,7 @@ export const IssueView: FC<IIssueView> = observer((props) => {
                         projectId={projectId}
                         issueId={issueId}
                         issueOperations={issueOperations}
-                        disabled={disabled || is_archived}
+                        disabled={disabled || is_archived || isLocalDBIssueDescription}
                         isArchived={is_archived}
                         isSubmitting={isSubmitting}
                         setIsSubmitting={(value) => setIsSubmitting(value)}
@@ -217,7 +220,7 @@ export const IssueView: FC<IIssueView> = observer((props) => {
                             projectId={projectId}
                             issueId={issueId}
                             issueOperations={issueOperations}
-                            disabled={disabled || is_archived}
+                            disabled={disabled || is_archived || isLocalDBIssueDescription}
                             isArchived={is_archived}
                             isSubmitting={isSubmitting}
                             setIsSubmitting={(value) => setIsSubmitting(value)}
@@ -241,7 +244,7 @@ export const IssueView: FC<IIssueView> = observer((props) => {
                         </div>
                       </div>
                       <div
-                        className={`h-full !w-[400px] flex-shrink-0 border-l border-custom-border-200 p-4 py-5 ${
+                        className={`h-full !w-[400px] flex-shrink-0 border-l border-custom-border-200 p-4 py-5 overflow-hidden vertical-scrollbar scrollbar-sm ${
                           is_archived ? "pointer-events-none" : ""
                         }`}
                       >

@@ -4,10 +4,6 @@ require("dotenv").config({ path: ".env" });
 // const path = require("path");
 
 const { withSentryConfig } = require("@sentry/nextjs");
-const withPWA = require("next-pwa")({
-  dest: "public",
-  disable: process.env.NODE_ENV === "development",
-});
 
 const nextConfig = {
   trailingSlash: true,
@@ -24,17 +20,13 @@ const nextConfig = {
             key: "Referrer-Policy",
             value: "origin-when-cross-origin",
           },
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
         ],
       },
     ];
   },
   images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "**",
-      },
-    ],
     unoptimized: true,
   },
   // webpack: (config, { isServer }) => {
@@ -133,10 +125,8 @@ const sentryConfig = {
   automaticVercelMonitors: true,
 };
 
-const config = withPWA(nextConfig);
-
 if (parseInt(process.env.SENTRY_MONITORING_ENABLED || "0", 10)) {
-  module.exports = withSentryConfig(config, sentryConfig);
+  module.exports = withSentryConfig(nextConfig, sentryConfig);
 } else {
-  module.exports = config;
+  module.exports = nextConfig;
 }

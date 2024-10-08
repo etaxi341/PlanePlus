@@ -301,11 +301,16 @@ class ProjectAPIEndpoint(BaseAPIView):
             if serializer.is_valid():
                 serializer.save()
                 if serializer.data["inbox_view"]:
-                    Inbox.objects.get_or_create(
-                        name=f"{project.name} Inbox",
+                    inbox = Inbox.objects.filter(
                         project=project,
                         is_default=True,
-                    )
+                    ).first()
+                    if not inbox:
+                        Inbox.objects.create(
+                            name=f"{project.name} Inbox",
+                            project=project,
+                            is_default=True,
+                        )
 
                     # Create the triage state in Backlog group
                     State.objects.get_or_create(
@@ -377,6 +382,10 @@ class ProjectArchiveUnarchiveAPIEndpoint(BaseAPIView):
         project = Project.objects.get(pk=project_id, workspace__slug=slug)
         project.archived_at = timezone.now()
         project.save()
+        UserFavorite.objects.filter(
+            workspace__slug=slug,
+            project=project_id,
+        ).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def delete(self, request, slug, project_id):

@@ -354,7 +354,12 @@ export class ProjectStore implements IProjectStore {
       const response = await this.projectService.createProject(workspaceSlug, data);
       runInAction(() => {
         set(this.projectMap, [response.id], response);
-        set(this.rootStore.user.membership.workspaceProjectsRole, [workspaceSlug, response.id], response.member_role);
+        // updating the user project role in workspaceProjectsPermissions
+        set(
+          this.rootStore.user.permission.workspaceProjectsPermissions,
+          [workspaceSlug, response.id],
+          response.member_role
+        );
       });
       return response;
     } catch (error) {
@@ -403,6 +408,7 @@ export class ProjectStore implements IProjectStore {
     } catch (error) {
       console.log("Failed to delete project from project store");
       this.fetchProjects(workspaceSlug);
+      throw error;
     }
   };
 
@@ -418,6 +424,7 @@ export class ProjectStore implements IProjectStore {
       .then((response) => {
         runInAction(() => {
           set(this.projectMap, [projectId, "archived_at"], response.archived_at);
+          this.rootStore.favorite.removeFavoriteFromStore(projectId);
         });
       })
       .catch((error) => {

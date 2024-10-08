@@ -4,8 +4,9 @@ import type {
   ICycle,
   TIssuesResponse,
   IWorkspaceActiveCyclesResponse,
-  IWorkspaceProgressResponse,
-  IWorkspaceAnalyticsResponse,
+  TCycleDistribution,
+  TProgressSnapshot,
+  TCycleEstimateDistribution,
 } from "@plane/types";
 import { API_BASE_URL } from "@/helpers/common.helper";
 import { APIService } from "@/services/api.service";
@@ -20,7 +21,7 @@ export class CycleService extends APIService {
     projectId: string,
     cycleId: string,
     analytic_type: string = "points"
-  ): Promise<IWorkspaceAnalyticsResponse> {
+  ): Promise<TCycleDistribution | TCycleEstimateDistribution> {
     return this.get(
       `/api/workspaces/${workspaceSlug}/projects/${projectId}/cycles/${cycleId}/analytics?type=${analytic_type}`
     )
@@ -34,8 +35,20 @@ export class CycleService extends APIService {
     workspaceSlug: string,
     projectId: string,
     cycleId: string
-  ): Promise<IWorkspaceProgressResponse> {
+  ): Promise<TProgressSnapshot> {
     return this.get(`/api/workspaces/${workspaceSlug}/projects/${projectId}/cycles/${cycleId}/progress/`)
+      .then((res) => res?.data)
+      .catch((err) => {
+        throw err?.response?.data;
+      });
+  }
+
+  async workspaceActiveCyclesProgressPro(
+    workspaceSlug: string,
+    projectId: string,
+    cycleId: string
+  ): Promise<TProgressSnapshot> {
+    return this.get(`/api/workspaces/${workspaceSlug}/projects/${projectId}/cycles/${cycleId}/cycle-progress/`)
       .then((res) => res?.data)
       .catch((err) => {
         throw err?.response?.data;

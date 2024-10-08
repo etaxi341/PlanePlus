@@ -52,6 +52,7 @@ from plane.db.models import (
 )
 from plane.utils.cache import cache_response
 from plane.bgtasks.webhook_task import model_activity
+from plane.bgtasks.recent_visited_task import recent_visited_task
 
 
 class ProjectViewSet(BaseViewSet):
@@ -70,13 +71,6 @@ class ProjectViewSet(BaseViewSet):
             super()
             .get_queryset()
             .filter(workspace__slug=self.kwargs.get("slug"))
-            .filter(
-                Q(
-                    project_projectmember__member=self.request.user,
-                    project_projectmember__is_active=True,
-                )
-                | Q(network=2)
-            )
             .select_related(
                 "workspace",
                 "workspace__owner",
@@ -154,7 +148,7 @@ class ProjectViewSet(BaseViewSet):
         )
 
     @allow_permission(
-        allowed_roles=[ROLE.ADMIN, ROLE.MEMBER, ROLE.VIEWER, ROLE.GUEST],
+        allowed_roles=[ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST],
         level="WORKSPACE",
     )
     def list(self, request, slug):
@@ -164,6 +158,31 @@ class ProjectViewSet(BaseViewSet):
             if field
         ]
         projects = self.get_queryset().order_by("sort_order", "name")
+        if WorkspaceMember.objects.filter(
+            member=request.user,
+            workspace__slug=slug,
+            is_active=True,
+            role=5,
+        ).exists():
+            projects = projects.filter(
+                project_projectmember__member=self.request.user,
+                project_projectmember__is_active=True,
+            )
+
+        if WorkspaceMember.objects.filter(
+            member=request.user,
+            workspace__slug=slug,
+            is_active=True,
+            role=15,
+        ).exists():
+            projects = projects.filter(
+                Q(
+                    project_projectmember__member=self.request.user,
+                    project_projectmember__is_active=True,
+                )
+                | Q(network=2)
+            )
+
         if request.GET.get("per_page", False) and request.GET.get(
             "cursor", False
         ):
@@ -176,24 +195,13 @@ class ProjectViewSet(BaseViewSet):
                 ).data,
             )
 
-        if WorkspaceMember.objects.filter(
-            member=request.user,
-            workspace__slug=slug,
-            is_active=True,
-            role__in=[5, 10],
-        ).exists():
-            projects = projects.filter(
-                project_projectmember__member=self.request.user,
-                project_projectmember__is_active=True,
-            )
-
         projects = ProjectListSerializer(
             projects, many=True, fields=fields if fields else None
         ).data
         return Response(projects, status=status.HTTP_200_OK)
 
     @allow_permission(
-        allowed_roles=[ROLE.ADMIN, ROLE.MEMBER, ROLE.VIEWER, ROLE.GUEST],
+        allowed_roles=[ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST],
         level="WORKSPACE",
     )
     def retrieve(self, request, slug, pk):
@@ -263,6 +271,14 @@ class ProjectViewSet(BaseViewSet):
                 {"error": "Project does not exist"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+
+        recent_visited_task.delay(
+            slug=slug,
+            project_id=pk,
+            entity_name="project",
+            entity_identifier=pk,
+            user_id=request.user.id,
+        )
 
         serializer = ProjectListSerializer(project)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -397,7 +413,7 @@ class ProjectViewSet(BaseViewSet):
                 status=status.HTTP_410_GONE,
             )
 
-    @allow_permission([ROLE.ADMIN, ROLE.MEMBER], level="WORKSPACE")
+    @allow_permission([ROLE.ADMIN])
     def partial_update(self, request, slug, pk=None):
         try:
             workspace = Workspace.objects.get(slug=slug)
@@ -422,11 +438,16 @@ class ProjectViewSet(BaseViewSet):
             if serializer.is_valid():
                 serializer.save()
                 if serializer.data["inbox_view"]:
-                    Inbox.objects.get_or_create(
-                        name=f"{project.name} Inbox",
+                    inbox = Inbox.objects.filter(
                         project=project,
                         is_default=True,
-                    )
+                    ).first()
+                    if not inbox:
+                        Inbox.objects.create(
+                            name=f"{project.name} Inbox",
+                            project=project,
+                            is_default=True,
+                        )
 
                     # Create the triage state in Backlog group
                     State.objects.get_or_create(
@@ -484,6 +505,10 @@ class ProjectArchiveUnarchiveEndpoint(BaseAPIView):
         project = Project.objects.get(pk=project_id, workspace__slug=slug)
         project.archived_at = timezone.now()
         project.save()
+        UserFavorite.objects.filter(
+            workspace__slug=slug,
+            project=project_id,
+        ).delete()
         return Response(
             {"archived_at": str(project.archived_at)},
             status=status.HTTP_200_OK,

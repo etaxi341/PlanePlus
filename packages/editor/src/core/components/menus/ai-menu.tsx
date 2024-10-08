@@ -23,7 +23,6 @@ export const AIFeaturesMenu: React.FC<Props> = (props) => {
     menuRef.current.remove();
     menuRef.current.style.visibility = "visible";
 
-    // @ts-expect-error - tippy types are incorrect
     popup.current = tippy(document.body, {
       getReferenceClientRect: null,
       content: menuRef.current,
@@ -87,6 +86,7 @@ export const AIFeaturesMenu: React.FC<Props> = (props) => {
     >
       <div ref={menuRef} className="z-10">
         {menu?.({
+          isOpen: isPopupVisible,
           onClose: hidePopup,
         })}
       </div>
