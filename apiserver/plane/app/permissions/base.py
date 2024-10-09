@@ -40,10 +40,11 @@ def allow_permission(allowed_roles, level="PROJECT", creator=False, model=None):
                 ).exists():
                     return view_func(instance, request, *args, **kwargs)
             else:
+                project_id = kwargs.get("project_id") or kwargs.get("pk")
                 if ProjectMember.objects.filter(
                     member=request.user,
                     workspace__slug=kwargs["slug"],
-                    project_id=kwargs["project_id"],
+                    project_id=project_id,
                     role__in=allowed_role_values,
                     is_active=True,
                 ).exists():
