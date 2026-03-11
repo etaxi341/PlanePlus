@@ -9,13 +9,13 @@ import { TPage } from "@plane/types";
 // plane ui
 import { Breadcrumbs, Button, Header, setToast, TOAST_TYPE } from "@plane/ui";
 // helpers
-import { BreadcrumbLink, Logo } from "@/components/common";
+import { BreadcrumbLink } from "@/components/common";
 // constants
 import { EPageAccess } from "@/constants/page";
 // hooks
-import { useEventTracker, useProject, useProjectPages, useUserPermissions } from "@/hooks/store";
-// plane web hooks
-import { EUserPermissions, EUserPermissionsLevel } from "@/plane-web/constants/user-permissions";
+import { useEventTracker, useProject, useProjectPages } from "@/hooks/store";
+// plane web
+import { ProjectBreadcrumb } from "@/plane-web/components/breadcrumbs";
 
 export const PagesListHeader = observer(() => {
   // states
@@ -26,16 +26,9 @@ export const PagesListHeader = observer(() => {
   const searchParams = useSearchParams();
   const pageType = searchParams.get("type");
   // store hooks
-  const { allowPermissions } = useUserPermissions();
-
   const { currentProjectDetails, loader } = useProject();
-  const { createPage } = useProjectPages();
+  const { canCurrentUserCreatePage, createPage } = useProjectPages();
   const { setTrackElement } = useEventTracker();
-  // auth
-  const canUserCreatePage = allowPermissions(
-    [EUserPermissions.ADMIN, EUserPermissions.MEMBER, EUserPermissions.GUEST],
-    EUserPermissionsLevel.PROJECT
-  );
   // handle page create
   const handleCreatePage = async () => {
     setIsCreatingPage(true);
@@ -65,22 +58,7 @@ export const PagesListHeader = observer(() => {
       <Header.LeftItem>
         <div>
           <Breadcrumbs isLoading={loader}>
-            <Breadcrumbs.BreadcrumbItem
-              type="text"
-              link={
-                <BreadcrumbLink
-                  href={`/${workspaceSlug}/projects/${currentProjectDetails?.id}/issues`}
-                  label={currentProjectDetails?.name ?? "Project"}
-                  icon={
-                    currentProjectDetails && (
-                      <span className="grid h-4 w-4 flex-shrink-0 place-items-center">
-                        <Logo logo={currentProjectDetails?.logo_props} size={16} />
-                      </span>
-                    )
-                  }
-                />
-              }
-            />
+            <ProjectBreadcrumb />
             <Breadcrumbs.BreadcrumbItem
               type="text"
               link={<BreadcrumbLink label="Pages" icon={<FileText className="h-4 w-4 text-custom-text-300" />} />}
@@ -88,7 +66,7 @@ export const PagesListHeader = observer(() => {
           </Breadcrumbs>
         </div>
       </Header.LeftItem>
-      {canUserCreatePage ? (
+      {canCurrentUserCreatePage ? (
         <Header.RightItem>
           <Button variant="primary" size="sm" onClick={handleCreatePage} loading={isCreatingPage}>
             {isCreatingPage ? "Adding" : "Add page"}

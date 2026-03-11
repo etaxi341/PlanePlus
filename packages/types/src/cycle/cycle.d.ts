@@ -20,7 +20,7 @@ export type TCycleEstimateDistributionBase = {
 
 export type TCycleAssigneesDistribution = {
   assignee_id: string | null;
-  avatar: string | null;
+  avatar_url: string | null;
   first_name: string | null;
   last_name: string | null;
   display_name: string | null;
@@ -104,6 +104,7 @@ export interface ICycle extends TProgressSnapshot {
   project_detail: IProjectDetails;
   progress: any[];
   version: number;
+  pending_issues: number;
 }
 
 export interface CycleIssueResponse {
@@ -120,9 +121,7 @@ export interface CycleIssueResponse {
   sub_issues_count: number;
 }
 
-export type SelectCycleType =
-  | (ICycle & { actionType: "edit" | "delete" | "create-issue" })
-  | undefined;
+export type SelectCycleType = (ICycle & { actionType: "edit" | "delete" | "create-issue" }) | undefined;
 
 export type CycleDateCheckData = {
   start_date: string;
@@ -132,3 +131,9 @@ export type CycleDateCheckData = {
 
 export type TCycleEstimateType = "issues" | "points";
 export type TCyclePlotType = "burndown" | "burnup";
+
+export type TPublicCycle = {
+  id: string;
+  name: string;
+  status: string;
+};

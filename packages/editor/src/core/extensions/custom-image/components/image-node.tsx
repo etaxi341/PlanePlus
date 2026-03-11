@@ -1,23 +1,26 @@
+import { Editor, NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { useEffect, useRef, useState } from "react";
-import { Node as ProsemirrorNode } from "@tiptap/pm/model";
-import { Editor, NodeViewWrapper } from "@tiptap/react";
 // extensions
 import { CustomImageBlock, CustomImageUploader, ImageAttributes } from "@/extensions/custom-image";
 
-export type CustomImageNodeViewProps = {
+export type CustoBaseImageNodeViewProps = {
   getPos: () => number;
   editor: Editor;
-  node: ProsemirrorNode & {
+  node: NodeViewProps["node"] & {
     attrs: ImageAttributes;
   };
-  updateAttributes: (attrs: Record<string, any>) => void;
+  updateAttributes: (attrs: Partial<ImageAttributes>) => void;
   selected: boolean;
 };
 
-export const CustomImageNode = (props: CustomImageNodeViewProps) => {
+export type CustomImageNodeProps = NodeViewProps & CustoBaseImageNodeViewProps;
+
+export const CustomImageNode = (props: CustomImageNodeProps) => {
   const { getPos, editor, node, updateAttributes, selected } = props;
+  const { src: imgNodeSrc } = node.attrs;
 
   const [isUploaded, setIsUploaded] = useState(false);
+  const [resolvedSrc, setResolvedSrc] = useState<string | undefined>(undefined);
   const [imageFromFileSystem, setImageFromFileSystem] = useState<string | undefined>(undefined);
   const [failedToLoadImage, setFailedToLoadImage] = useState(false);
 
@@ -26,25 +29,30 @@ export const CustomImageNode = (props: CustomImageNodeViewProps) => {
 
   useEffect(() => {
     const closestEditorContainer = imageComponentRef.current?.closest(".editor-container");
-    if (!closestEditorContainer) {
-      console.error("Editor container not found");
-      return;
+    if (closestEditorContainer) {
+      setEditorContainer(closestEditorContainer as HTMLDivElement);
     }
-
-    setEditorContainer(closestEditorContainer as HTMLDivElement);
   }, []);
 
   // the image is already uploaded if the image-component node has src attribute
   // and we need to remove the blob from our file system
   useEffect(() => {
-    const remoteImageSrc = node.attrs.src;
-    if (remoteImageSrc) {
+    if (resolvedSrc) {
       setIsUploaded(true);
       setImageFromFileSystem(undefined);
     } else {
       setIsUploaded(false);
     }
-  }, [node.attrs.src]);
+  }, [resolvedSrc]);
+
+  useEffect(() => {
+    const getImageSource = async () => {
+      // @ts-expect-error function not expected here, but will still work and don't remove await
+      const url: string = await editor?.commands?.getImageSource?.(imgNodeSrc);
+      setResolvedSrc(url as string);
+    };
+    getImageSource();
+  }, [imgNodeSrc]);
 
   return (
     <NodeViewWrapper>
@@ -54,6 +62,7 @@ export const CustomImageNode = (props: CustomImageNodeViewProps) => {
             imageFromFileSystem={imageFromFileSystem}
             editorContainer={editorContainer}
             editor={editor}
+            src={resolvedSrc}
             getPos={getPos}
             node={node}
             setEditorContainer={setEditorContainer}
@@ -67,6 +76,7 @@ export const CustomImageNode = (props: CustomImageNodeViewProps) => {
             failedToLoadImage={failedToLoadImage}
             getPos={getPos}
             loadImageFromFileSystem={setImageFromFileSystem}
+            maxFileSize={editor.storage.imageComponent.maxFileSize}
             node={node}
             setIsUploaded={setIsUploaded}
             selected={selected}

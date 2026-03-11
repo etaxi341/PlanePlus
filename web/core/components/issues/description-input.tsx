@@ -5,7 +5,8 @@ import debounce from "lodash/debounce";
 import { observer } from "mobx-react";
 import { Controller, useForm } from "react-hook-form";
 // types
-import { TIssue } from "@plane/types";
+import { TIssue, TNameDescriptionLoader } from "@plane/types";
+import { EFileAssetType } from "@plane/types/src/enums";
 // ui
 import { Loader } from "@plane/ui";
 // components
@@ -15,6 +16,12 @@ import { TIssueOperations } from "@/components/issues/issue-detail";
 import { getDescriptionPlaceholder } from "@/helpers/issue.helper";
 // hooks
 import { useWorkspace } from "@/hooks/store";
+// plane web services
+import { WorkspaceService } from "@/plane-web/services";
+// services
+import { FileService } from "@/services/file.service";
+const workspaceService = new WorkspaceService();
+const fileService = new FileService();
 
 export type IssueDescriptionInputProps = {
   containerClassName?: string;
@@ -25,7 +32,7 @@ export type IssueDescriptionInputProps = {
   disabled?: boolean;
   issueOperations: TIssueOperations;
   placeholder?: string | ((isFocused: boolean, value: string) => string);
-  setIsSubmitting: (initialValue: "submitting" | "submitted" | "saved") => void;
+  setIsSubmitting: (initialValue: TNameDescriptionLoader) => void;
   swrIssueDescription?: string | null | undefined;
 };
 
@@ -114,13 +121,39 @@ export const IssueDescriptionInput: FC<IssueDescriptionInputProps> = observer((p
                 placeholder={
                   placeholder ? placeholder : (isFocused, value) => getDescriptionPlaceholder(isFocused, value)
                 }
+                searchMentionCallback={async (payload) =>
+                  await workspaceService.searchEntity(workspaceSlug?.toString() ?? "", {
+                    ...payload,
+                    project_id: projectId?.toString() ?? "",
+                    issue_id: issueId?.toString(),
+                  })
+                }
                 containerClassName={containerClassName}
+                uploadFile={async (file) => {
+                  try {
+                    const { asset_id } = await fileService.uploadProjectAsset(
+                      workspaceSlug,
+                      projectId,
+                      {
+                        entity_identifier: issueId,
+                        entity_type: EFileAssetType.ISSUE_DESCRIPTION,
+                      },
+                      file
+                    );
+                    return asset_id;
+                  } catch (error) {
+                    console.log("Error in uploading issue asset:", error);
+                    throw new Error("Asset upload failed. Please try again later.");
+                  }
+                }}
               />
             ) : (
               <RichTextReadOnlyEditor
                 id={issueId}
                 initialValue={localIssueDescription.description_html ?? ""}
                 containerClassName={containerClassName}
+                workspaceSlug={workspaceSlug}
+                projectId={projectId}
               />
             )
           }

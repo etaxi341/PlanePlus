@@ -1,6 +1,7 @@
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import { Extensions } from "@tiptap/core";
-import { SlashCommand } from "@/extensions";
+import { AnyExtension } from "@tiptap/core";
+import { SlashCommands } from "@/extensions";
 // plane editor types
 import { TIssueEmbedConfig } from "@/plane-editor/types";
 // types
@@ -13,8 +14,24 @@ type Props = {
   userDetails: TUserDetails;
 };
 
-export const DocumentEditorAdditionalExtensions = (_props: Props) => {
-  const extensions: Extensions = [SlashCommand()];
+type ExtensionConfig = {
+  isEnabled: (disabledExtensions: TExtensions[]) => boolean;
+  getExtension: (props: Props) => AnyExtension;
+};
 
-  return extensions;
+const extensionRegistry: ExtensionConfig[] = [
+  {
+    isEnabled: (disabledExtensions) => !disabledExtensions.includes("slash-commands"),
+    getExtension: () => SlashCommands({}),
+  },
+];
+
+export const DocumentEditorAdditionalExtensions = (_props: Props) => {
+  const { disabledExtensions = [] } = _props;
+
+  const documentExtensions = extensionRegistry
+    .filter((config) => config.isEnabled(disabledExtensions))
+    .map((config) => config.getExtension(_props));
+
+  return documentExtensions;
 };

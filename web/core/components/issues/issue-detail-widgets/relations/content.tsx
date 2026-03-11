@@ -1,15 +1,18 @@
 "use client";
 import { FC, useState } from "react";
 import { observer } from "mobx-react";
-import { CircleDot, CopyPlus, XCircle } from "lucide-react";
-import { TIssue, TIssueRelationIdMap } from "@plane/types";
-import { Collapsible, RelatedIcon } from "@plane/ui";
+import { EIssueServiceType } from "@plane/constants";
+import { TIssue, TIssueRelationIdMap, TIssueServiceType } from "@plane/types";
+import { Collapsible } from "@plane/ui";
 // components
 import { RelationIssueList } from "@/components/issues";
 import { DeleteIssueModal } from "@/components/issues/delete-issue-modal";
 import { CreateUpdateIssueModal } from "@/components/issues/issue-modal";
 // hooks
 import { useIssueDetail } from "@/hooks/store";
+// Plane-web
+import { useTimeLineRelationOptions } from "@/plane-web/components/relations";
+import { TIssueRelationTypes } from "@/plane-web/types";
 // helper
 import { useRelationOperations } from "./helper";
 
@@ -18,39 +21,21 @@ type Props = {
   projectId: string;
   issueId: string;
   disabled: boolean;
+  issueServiceType?: TIssueServiceType;
 };
-
-const ISSUE_RELATION_OPTIONS = [
-  {
-    key: "blocked_by",
-    label: "Blocked by",
-    icon: (size: number) => <CircleDot size={size} />,
-    className: "bg-red-500/20 text-red-700",
-  },
-  {
-    key: "blocking",
-    label: "Blocking",
-    icon: (size: number) => <XCircle size={size} />,
-    className: "bg-yellow-500/20 text-yellow-700",
-  },
-  {
-    key: "relates_to",
-    label: "Relates to",
-    icon: (size: number) => <RelatedIcon height={size} width={size} />,
-    className: "bg-custom-background-80 text-custom-text-200",
-  },
-  {
-    key: "duplicate",
-    label: "Duplicate of",
-    icon: (size: number) => <CopyPlus size={size} />,
-    className: "bg-custom-background-80 text-custom-text-200",
-  },
-];
 
 type TIssueCrudState = { toggle: boolean; issueId: string | undefined; issue: TIssue | undefined };
 
+export type TRelationObject = {
+  key: TIssueRelationTypes;
+  label: string;
+  className: string;
+  icon: (size: number) => React.ReactElement;
+  placeholder: string;
+};
+
 export const RelationsCollapsibleContent: FC<Props> = observer((props) => {
-  const { workspaceSlug, projectId, issueId, disabled = false } = props;
+  const { workspaceSlug, projectId, issueId, disabled = false, issueServiceType = EIssueServiceType.ISSUES } = props;
   // state
   const [issueCrudState, setIssueCrudState] = useState<{
     update: TIssueCrudState;
@@ -73,13 +58,14 @@ export const RelationsCollapsibleContent: FC<Props> = observer((props) => {
     relation: { getRelationsByIssueId },
     toggleDeleteIssueModal,
     toggleCreateIssueModal,
-  } = useIssueDetail();
+  } = useIssueDetail(issueServiceType);
 
   // helper
   const issueOperations = useRelationOperations();
 
   // derived values
   const relations = getRelationsByIssueId(issueId);
+  const ISSUE_RELATION_OPTIONS = useTimeLineRelationOptions();
 
   const handleIssueCrudState = (key: "update" | "delete", _issueId: string | null, issue: TIssue | null = null) => {
     setIssueCrudState({
@@ -96,17 +82,19 @@ export const RelationsCollapsibleContent: FC<Props> = observer((props) => {
   if (!relations) return null;
 
   // map relations to array
-  const relationsArray = Object.keys(relations).map((relationKey) => {
-    const issueIds = relations[relationKey as keyof TIssueRelationIdMap];
-    const issueRelationOption = ISSUE_RELATION_OPTIONS.find((option) => option.key === relationKey);
-    return {
-      relationKey: relationKey as keyof TIssueRelationIdMap,
-      issueIds: issueIds,
-      icon: issueRelationOption?.icon,
-      label: issueRelationOption?.label,
-      className: issueRelationOption?.className,
-    };
-  });
+  const relationsArray = (Object.keys(relations) as TIssueRelationTypes[])
+    .filter((relationKey) => !!ISSUE_RELATION_OPTIONS[relationKey])
+    .map((relationKey) => {
+      const issueIds = relations[relationKey];
+      const issueRelationOption = ISSUE_RELATION_OPTIONS[relationKey];
+      return {
+        relationKey: relationKey,
+        issueIds: issueIds,
+        icon: issueRelationOption?.icon,
+        label: issueRelationOption?.label,
+        className: issueRelationOption?.className,
+      };
+    });
 
   // filter out relations with no issues
   const filteredRelationsArray = relationsArray.filter((relation) => relation.issueIds.length > 0);
@@ -143,6 +131,7 @@ export const RelationsCollapsibleContent: FC<Props> = observer((props) => {
                 disabled={disabled}
                 issueOperations={issueOperations}
                 handleIssueCrudState={handleIssueCrudState}
+                issueServiceType={issueServiceType}
               />
             </Collapsible>
           </div>

@@ -14,10 +14,12 @@ import { EditorRefApi, ICollaborativeDocumentEditor } from "@/types";
 
 const CollaborativeDocumentEditor = (props: ICollaborativeDocumentEditor) => {
   const {
+    onTransaction,
     aiHandler,
     containerClassName,
     disabledExtensions,
     displayConfig = DEFAULT_DISPLAY_CONFIG,
+    editable,
     editorClassName = "",
     embedHandler,
     fileHandler,
@@ -44,6 +46,7 @@ const CollaborativeDocumentEditor = (props: ICollaborativeDocumentEditor) => {
   // use document editor
   const { editor, hasServerConnectionFailed, hasServerSynced } = useCollaborativeEditor({
     disabledExtensions,
+    editable,
     editorClassName,
     embedHandler,
     extensions,
@@ -52,6 +55,7 @@ const CollaborativeDocumentEditor = (props: ICollaborativeDocumentEditor) => {
     handleEditorReady,
     id,
     mentionHandler,
+    onTransaction,
     placeholder,
     realtimeConfig,
     serverHandler,

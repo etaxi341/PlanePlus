@@ -4,14 +4,13 @@ import { FC, useEffect, useRef, useState } from "react";
 import { observer } from "mobx-react";
 import { useForm } from "react-hook-form";
 import { Check, Globe2, Lock, Pencil, Trash2, X } from "lucide-react";
+import { EIssueCommentAccessSpecifier } from "@plane/constants";
 import { EditorReadOnlyRefApi, EditorRefApi } from "@plane/editor";
 import { TIssueComment } from "@plane/types";
 // ui
 import { CustomMenu } from "@plane/ui";
 // components
 import { LiteTextEditor, LiteTextReadOnlyEditor } from "@/components/editor";
-// constants
-import { EIssueCommentAccessSpecifier } from "@/constants/issue";
 // helpers
 import { isCommentEmpty } from "@/helpers/string.helper";
 // hooks
@@ -23,6 +22,7 @@ import { IssueCommentBlock } from "./comment-block";
 
 type TIssueCommentCard = {
   projectId: string;
+  issueId: string;
   workspaceSlug: string;
   commentId: string;
   activityOperations: TActivityOperations;
@@ -35,6 +35,7 @@ export const IssueCommentCard: FC<TIssueCommentCard> = observer((props) => {
   const {
     workspaceSlug,
     projectId,
+    issueId,
     commentId,
     activityOperations,
     ends,
@@ -66,18 +67,20 @@ export const IssueCommentCard: FC<TIssueCommentCard> = observer((props) => {
     defaultValues: { comment_html: comment?.comment_html },
   });
 
-  const onEnter = (formData: Partial<TIssueComment>) => {
+  const onEnter = async (formData: Partial<TIssueComment>) => {
     if (isSubmitting || !comment) return;
     setIsEditing(false);
 
-    activityOperations.updateComment(comment.id, formData);
+    await activityOperations.updateComment(comment.id, formData);
 
     editorRef.current?.setEditorValue(formData?.comment_html ?? "<p></p>");
     showEditorRef.current?.setEditorValue(formData?.comment_html ?? "<p></p>");
   };
 
   useEffect(() => {
-    isEditing && setFocus("comment_html");
+    if (isEditing) {
+      setFocus("comment_html");
+    }
   }, [isEditing, setFocus]);
 
   const commentHTML = watch("comment_html");
@@ -143,6 +146,7 @@ export const IssueCommentCard: FC<TIssueCommentCard> = observer((props) => {
             <LiteTextEditor
               workspaceId={workspaceId}
               projectId={projectId}
+              issue_id={issueId}
               workspaceSlug={workspaceSlug}
               ref={editorRef}
               id={comment.id}
@@ -155,6 +159,10 @@ export const IssueCommentCard: FC<TIssueCommentCard> = observer((props) => {
                 }
               }}
               showSubmitButton={false}
+              uploadFile={async (file) => {
+                const { asset_id } = await activityOperations.uploadCommentAsset(file, comment.id);
+                return asset_id;
+              }}
             />
           </div>
           <div className="flex gap-1 self-end">
@@ -189,7 +197,13 @@ export const IssueCommentCard: FC<TIssueCommentCard> = observer((props) => {
               )}
             </div>
           )}
-          <LiteTextReadOnlyEditor ref={showEditorRef} id={comment.id} initialValue={comment.comment_html ?? ""} />
+          <LiteTextReadOnlyEditor
+            ref={showEditorRef}
+            id={comment.id}
+            initialValue={comment.comment_html ?? ""}
+            workspaceSlug={workspaceSlug}
+            projectId={projectId}
+          />
 
           <IssueCommentReaction
             workspaceSlug={workspaceSlug}

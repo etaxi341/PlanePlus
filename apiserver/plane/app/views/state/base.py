@@ -1,6 +1,9 @@
 # Python imports
 from itertools import groupby
 
+# Django imports
+from django.db.utils import IntegrityError
+
 # Third party imports
 from rest_framework.response import Response
 from rest_framework import status
@@ -8,10 +11,7 @@ from rest_framework import status
 # Module imports
 from .. import BaseViewSet
 from plane.app.serializers import StateSerializer
-from plane.app.permissions import (
-    ROLE,
-    allow_permission
-)
+from plane.app.permissions import ROLE, allow_permission
 from plane.db.models import State, Issue
 from plane.utils.cache import invalidate_cache
 
@@ -37,16 +37,22 @@ class StateViewSet(BaseViewSet):
             .distinct()
         )
 
-    @invalidate_cache(
-        path="workspaces/:slug/states/", url_params=True, user=False
-    )
+    @invalidate_cache(path="workspaces/:slug/states/", url_params=True, user=False)
     @allow_permission([ROLE.ADMIN])
     def create(self, request, slug, project_id):
-        serializer = StateSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save(project_id=project_id)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            serializer = StateSerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save(project_id=project_id)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except IntegrityError as e:
+            if "already exists" in str(e):
+                return Response(
+                    {"name": "The state name is already taken"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
 
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST])
     def list(self, request, slug, project_id):
@@ -62,9 +68,7 @@ class StateViewSet(BaseViewSet):
             return Response(state_dict, status=status.HTTP_200_OK)
         return Response(states, status=status.HTTP_200_OK)
 
-    @invalidate_cache(
-        path="workspaces/:slug/states/", url_params=True, user=False
-    )
+    @invalidate_cache(path="workspaces/:slug/states/", url_params=True, user=False)
     @allow_permission([ROLE.ADMIN])
     def mark_as_default(self, request, slug, project_id, pk):
         # Select all the states which are marked as default
@@ -76,16 +80,11 @@ class StateViewSet(BaseViewSet):
         ).update(default=True)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    @invalidate_cache(
-        path="workspaces/:slug/states/", url_params=True, user=False
-    )
+    @invalidate_cache(path="workspaces/:slug/states/", url_params=True, user=False)
     @allow_permission([ROLE.ADMIN])
     def destroy(self, request, slug, project_id, pk):
         state = State.objects.get(
-            is_triage=False,
-            pk=pk,
-            project_id=project_id,
-            workspace__slug=slug,
+            is_triage=False, pk=pk, project_id=project_id, workspace__slug=slug
         )
 
         if state.default:
@@ -99,9 +98,7 @@ class StateViewSet(BaseViewSet):
 
         if issue_exist:
             return Response(
-                {
-                    "error": "The state is not empty, only empty states can be deleted"
-                },
+                {"error": "The state is not empty, only empty states can be deleted"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

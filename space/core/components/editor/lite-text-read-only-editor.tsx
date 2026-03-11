@@ -1,29 +1,35 @@
 import React from "react";
 // editor
 import { EditorReadOnlyRefApi, ILiteTextReadOnlyEditor, LiteTextReadOnlyEditorWithRef } from "@plane/editor";
+// components
+import { EditorMentionsRoot } from "@/components/editor";
 // helpers
 import { cn } from "@/helpers/common.helper";
-// hooks
-import { useMention } from "@/hooks/use-mention";
+import { getReadOnlyEditorFileHandlers } from "@/helpers/editor.helper";
 
-type LiteTextReadOnlyEditorWrapperProps = Omit<ILiteTextReadOnlyEditor, "mentionHandler">;
+type LiteTextReadOnlyEditorWrapperProps = Omit<
+  ILiteTextReadOnlyEditor,
+  "disabledExtensions" | "fileHandler" | "mentionHandler"
+> & {
+  anchor: string;
+};
 
 export const LiteTextReadOnlyEditor = React.forwardRef<EditorReadOnlyRefApi, LiteTextReadOnlyEditorWrapperProps>(
-  ({ ...props }, ref) => {
-    const { mentionHighlights } = useMention();
-
-    return (
-      <LiteTextReadOnlyEditorWithRef
-        ref={ref}
-        mentionHandler={{
-          highlights: mentionHighlights,
-        }}
-        {...props}
-        // overriding the customClassName to add relative class passed
-        containerClassName={cn(props.containerClassName, "relative p-2")}
-      />
-    );
-  }
+  ({ anchor, ...props }, ref) => (
+    <LiteTextReadOnlyEditorWithRef
+      ref={ref}
+      disabledExtensions={[]}
+      fileHandler={getReadOnlyEditorFileHandlers({
+        anchor,
+      })}
+      mentionHandler={{
+        renderComponent: (props) => <EditorMentionsRoot {...props} />,
+      }}
+      {...props}
+      // overriding the customClassName to add relative class passed
+      containerClassName={cn(props.containerClassName, "relative p-2")}
+    />
+  )
 );
 
 LiteTextReadOnlyEditor.displayName = "LiteTextReadOnlyEditor";

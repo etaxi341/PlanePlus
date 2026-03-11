@@ -8,6 +8,7 @@ import { WorkspaceService } from "@/plane-web/services";
 import { CoreRootStore } from "@/store/root.store";
 // sub-stores
 import { ApiTokenStore, IApiTokenStore } from "./api-token.store";
+import { HomeStore, IHomeStore } from "./home";
 import { IWebhookStore, WebhookStore } from "./webhook.store";
 
 export interface IWorkspaceRootStore {
@@ -25,10 +26,12 @@ export interface IWorkspaceRootStore {
   // crud actions
   createWorkspace: (data: Partial<IWorkspace>) => Promise<IWorkspace>;
   updateWorkspace: (workspaceSlug: string, data: Partial<IWorkspace>) => Promise<IWorkspace>;
+  updateWorkspaceLogo: (workspaceSlug: string, logoURL: string) => void;
   deleteWorkspace: (workspaceSlug: string) => Promise<void>;
   // sub-stores
   webhook: IWebhookStore;
   apiToken: IApiTokenStore;
+  home: IHomeStore;
 }
 
 export class WorkspaceRootStore implements IWorkspaceRootStore {
@@ -40,6 +43,7 @@ export class WorkspaceRootStore implements IWorkspaceRootStore {
   // root store
   router;
   user;
+  home;
   // sub-stores
   webhook: IWebhookStore;
   apiToken: IApiTokenStore;
@@ -59,6 +63,7 @@ export class WorkspaceRootStore implements IWorkspaceRootStore {
       fetchWorkspaces: action,
       createWorkspace: action,
       updateWorkspace: action,
+      updateWorkspaceLogo: action,
       deleteWorkspace: action,
     });
 
@@ -67,6 +72,7 @@ export class WorkspaceRootStore implements IWorkspaceRootStore {
     // root store
     this.router = _rootStore.router;
     this.user = _rootStore.user;
+    this.home = new HomeStore();
     // sub-stores
     this.webhook = new WebhookStore(_rootStore);
     this.apiToken = new ApiTokenStore(_rootStore);
@@ -119,8 +125,6 @@ export class WorkspaceRootStore implements IWorkspaceRootStore {
         });
       });
       return workspaceResponse;
-    } catch (e) {
-      throw e;
     } finally {
       this.loader = false;
     }
@@ -150,6 +154,21 @@ export class WorkspaceRootStore implements IWorkspaceRootStore {
       });
       return response;
     });
+
+  /**
+   * update workspace using the workspace slug and new workspace data
+   * @param {string} workspaceSlug
+   * @param {string} logoURL
+   */
+  updateWorkspaceLogo = async (workspaceSlug: string, logoURL: string) => {
+    const workspaceId = this.getWorkspaceBySlug(workspaceSlug)?.id;
+    if (!workspaceId) {
+      throw new Error("Workspace not found");
+    }
+    runInAction(() => {
+      set(this.workspaces[workspaceId], ["logo_url"], logoURL);
+    });
+  };
 
   /**
    * delete workspace using the workspace slug

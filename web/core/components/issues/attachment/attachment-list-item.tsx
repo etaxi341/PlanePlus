@@ -3,6 +3,8 @@
 import { FC } from "react";
 import { observer } from "mobx-react";
 import { Trash } from "lucide-react";
+import { EIssueServiceType } from "@plane/constants";
+import { TIssueServiceType } from "@plane/types";
 // ui
 import { CustomMenu, Tooltip } from "@plane/ui";
 // components
@@ -11,6 +13,7 @@ import { getFileIcon } from "@/components/icons";
 // helpers
 import { convertBytesToSize, getFileExtension, getFileName } from "@/helpers/attachment.helper";
 import { renderFormattedDate } from "@/helpers/date-time.helper";
+import { getFileURL } from "@/helpers/file.helper";
 // hooks
 import { useIssueDetail, useMember } from "@/hooks/store";
 import { usePlatformOS } from "@/hooks/use-platform-os";
@@ -18,20 +21,24 @@ import { usePlatformOS } from "@/hooks/use-platform-os";
 type TIssueAttachmentsListItem = {
   attachmentId: string;
   disabled?: boolean;
+  issueServiceType?: TIssueServiceType;
 };
 
 export const IssueAttachmentsListItem: FC<TIssueAttachmentsListItem> = observer((props) => {
   // props
-  const { attachmentId, disabled } = props;
+  const { attachmentId, disabled, issueServiceType = EIssueServiceType.ISSUES } = props;
   // store hooks
   const { getUserDetails } = useMember();
   const {
     attachment: { getAttachmentById },
     toggleDeleteAttachmentModal,
-  } = useIssueDetail();
-
+  } = useIssueDetail(issueServiceType);
   // derived values
   const attachment = attachmentId ? getAttachmentById(attachmentId) : undefined;
+  const fileName = getFileName(attachment?.attributes.name ?? "");
+  const fileExtension = getFileExtension(attachment?.asset_url ?? "");
+  const fileIcon = getFileIcon(fileExtension, 18);
+  const fileURL = getFileURL(attachment?.asset_url ?? "");
   // hooks
   const { isMobile } = usePlatformOS();
 
@@ -43,17 +50,14 @@ export const IssueAttachmentsListItem: FC<TIssueAttachmentsListItem> = observer(
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          window.open(attachment.asset, "_blank");
+          window.open(fileURL, "_blank");
         }}
       >
         <div className="group flex items-center justify-between gap-3 h-11 hover:bg-custom-background-90 pl-9 pr-2">
           <div className="flex items-center gap-3 text-sm truncate">
-            <div className="flex items-center gap-3  ">{getFileIcon(getFileExtension(attachment.asset), 18)}</div>
-            <Tooltip
-              tooltipContent={`${getFileName(attachment.attributes.name)}.${getFileExtension(attachment.asset)}`}
-              isMobile={isMobile}
-            >
-              <p className="text-custom-text-200 font-medium truncate">{`${getFileName(attachment.attributes.name)}.${getFileExtension(attachment.asset)}`}</p>
+            <div className="flex items-center gap-3">{fileIcon}</div>
+            <Tooltip tooltipContent={`${fileName}.${fileExtension}`} isMobile={isMobile}>
+              <p className="text-custom-text-200 font-medium truncate">{`${fileName}.${fileExtension}`}</p>
             </Tooltip>
             <span className="flex size-1.5 bg-custom-background-80 rounded-full" />
             <span className="flex-shrink-0 text-custom-text-400">{convertBytesToSize(attachment.attributes.size)}</span>

@@ -2,11 +2,15 @@
 
 import React from "react";
 import { observer } from "mobx-react";
+import { useParams } from "next/navigation";
 import { Ban } from "lucide-react";
-// hooks
+// plane ui
 import { Avatar, CustomSearchSelect } from "@plane/ui";
+// helpers
+import { getFileURL } from "@/helpers/file.helper";
+// hooks
 import { useMember } from "@/hooks/store";
-// ui
+import { EUserPermissions } from "@/plane-web/constants";
 
 type Props = {
   value: any;
@@ -16,6 +20,8 @@ type Props = {
 
 export const MemberSelect: React.FC<Props> = observer((props) => {
   const { value, onChange, isDisabled = false } = props;
+  // router
+  const { projectId } = useParams();
   // store hooks
   const {
     project: { projectMemberIds, getProjectMemberDetails },
@@ -23,16 +29,18 @@ export const MemberSelect: React.FC<Props> = observer((props) => {
 
   const options = projectMemberIds
     ?.map((userId) => {
-      const memberDetails = getProjectMemberDetails(userId);
+      const memberDetails = projectId ? getProjectMemberDetails(userId, projectId.toString()) : null;
 
       if (!memberDetails?.member) return;
+      const isGuest = memberDetails.role === EUserPermissions.GUEST;
+      if (isGuest) return;
 
       return {
         value: `${memberDetails?.member.id}`,
         query: `${memberDetails?.member.display_name}`,
         content: (
           <div className="flex items-center gap-2">
-            <Avatar name={memberDetails?.member.display_name} src={memberDetails?.member.avatar} />
+            <Avatar name={memberDetails?.member.display_name} src={getFileURL(memberDetails?.member.avatar_url)} />
             {memberDetails?.member.display_name}
           </div>
         ),
@@ -45,14 +53,16 @@ export const MemberSelect: React.FC<Props> = observer((props) => {
         content: React.JSX.Element;
       }[]
     | undefined;
-  const selectedOption = getProjectMemberDetails(value);
+  const selectedOption = projectId ? getProjectMemberDetails(value, projectId.toString()) : null;
 
   return (
     <CustomSearchSelect
       value={value}
       label={
         <div className="flex items-center gap-2 h-5">
-          {selectedOption && <Avatar name={selectedOption.member?.display_name} src={selectedOption.member?.avatar} />}
+          {selectedOption && (
+            <Avatar name={selectedOption.member?.display_name} src={getFileURL(selectedOption.member?.avatar_url)} />
+          )}
           {selectedOption ? (
             selectedOption.member?.display_name
           ) : (

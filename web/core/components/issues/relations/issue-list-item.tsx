@@ -3,7 +3,9 @@
 import React, { FC } from "react";
 import { observer } from "mobx-react";
 import { X, Pencil, Trash, Link as LinkIcon } from "lucide-react";
-import { TIssue, TIssueRelationTypes } from "@plane/types";
+// Plane
+import { EIssueServiceType } from "@plane/constants";
+import { TIssue, TIssueServiceType } from "@plane/types";
 import { ControlLink, CustomMenu, Tooltip } from "@plane/ui";
 // components
 import { RelationIssueProperty } from "@/components/issues/relations";
@@ -13,7 +15,8 @@ import useIssuePeekOverviewRedirection from "@/hooks/use-issue-peek-overview-red
 import { usePlatformOS } from "@/hooks/use-platform-os";
 // plane web components
 import { IssueIdentifier } from "@/plane-web/components/issues";
-// types
+import { TIssueRelationTypes } from "@/plane-web/types";
+//
 import { TRelationIssueOperations } from "../issue-detail-widgets/relations/helper";
 
 type Props = {
@@ -25,6 +28,7 @@ type Props = {
   disabled: boolean;
   issueOperations: TRelationIssueOperations;
   handleIssueCrudState: (key: "update" | "delete", issueId: string, issue?: TIssue | null) => void;
+  issueServiceType?: TIssueServiceType;
 };
 
 export const RelationIssueListItem: FC<Props> = observer((props) => {
@@ -37,6 +41,7 @@ export const RelationIssueListItem: FC<Props> = observer((props) => {
     disabled = false,
     issueOperations,
     handleIssueCrudState,
+    issueServiceType = EIssueServiceType.ISSUES,
   } = props;
 
   // store hooks
@@ -45,7 +50,7 @@ export const RelationIssueListItem: FC<Props> = observer((props) => {
     removeRelation,
     toggleCreateIssueModal,
     toggleDeleteIssueModal,
-  } = useIssueDetail();
+  } = useIssueDetail(issueServiceType);
   const project = useProject();
   const { getProjectStates } = useProjectState();
   const { handleRedirection } = useIssuePeekOverviewRedirection();
@@ -135,6 +140,7 @@ export const RelationIssueListItem: FC<Props> = observer((props) => {
                 issueId={relationIssueId}
                 disabled={disabled}
                 issueOperations={issueOperations}
+                issueServiceType={issueServiceType}
               />
             </div>
             <div className="flex-shrink-0 text-sm">

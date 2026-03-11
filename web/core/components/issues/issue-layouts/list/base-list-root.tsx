@@ -1,10 +1,11 @@
 import { FC, useCallback, useEffect } from "react";
 import { observer } from "mobx-react";
-// types
 import { useParams } from "next/navigation";
+// plane constants
+import { EIssueLayoutTypes, EIssueFilterType, EIssuesStoreType } from "@plane/constants";
+// types
 import { GroupByColumnTypes, TGroupedIssues, TIssueKanbanFilters } from "@plane/types";
 // constants
-import { EIssueFilterType, EIssueLayoutTypes, EIssuesStoreType } from "@/constants/issue";
 // hooks
 import { useIssues, useUserPermissions } from "@/hooks/store";
 // hooks
@@ -25,16 +26,29 @@ type ListStoreType =
   | EIssuesStoreType.PROJECT_VIEW
   | EIssuesStoreType.DRAFT
   | EIssuesStoreType.PROFILE
-  | EIssuesStoreType.ARCHIVED;
+  | EIssuesStoreType.ARCHIVED
+  | EIssuesStoreType.WORKSPACE_DRAFT
+  | EIssuesStoreType.TEAM
+  | EIssuesStoreType.TEAM_VIEW
+  | EIssuesStoreType.EPIC;
+
 interface IBaseListRoot {
   QuickActions: FC<IQuickActionProps>;
   addIssuesToView?: (issueIds: string[]) => Promise<any>;
   canEditPropertiesBasedOnProject?: (projectId: string) => boolean;
   viewId?: string | undefined;
   isCompletedCycle?: boolean;
+  isEpic?: boolean;
 }
 export const BaseListRoot = observer((props: IBaseListRoot) => {
-  const { QuickActions, viewId, addIssuesToView, canEditPropertiesBasedOnProject, isCompletedCycle = false } = props;
+  const {
+    QuickActions,
+    viewId,
+    addIssuesToView,
+    canEditPropertiesBasedOnProject,
+    isCompletedCycle = false,
+    isEpic = false,
+  } = props;
   // router
   const storeType = useIssueStoreType() as ListStoreType;
   //stores
@@ -61,8 +75,9 @@ export const BaseListRoot = observer((props: IBaseListRoot) => {
   const showEmptyGroup = displayFilters?.show_empty_groups ?? false;
 
   const { workspaceSlug, projectId } = useParams();
-  const {updateFilters} = useIssuesActions(storeType);
-  const collapsedGroups = issuesFilter?.issueFilters?.kanbanFilters || { group_by: [], sub_group_by: [] } as TIssueKanbanFilters;
+  const { updateFilters } = useIssuesActions(storeType);
+  const collapsedGroups =
+    issuesFilter?.issueFilters?.kanbanFilters || ({ group_by: [], sub_group_by: [] } as TIssueKanbanFilters);
 
   useEffect(() => {
     fetchIssues("init-loader", { canGroup: true, perPageCount: group_by ? 50 : 100 }, viewId);
@@ -98,11 +113,11 @@ export const BaseListRoot = observer((props: IBaseListRoot) => {
         handleRemoveFromView={async () => removeIssueFromView && removeIssueFromView(issue.project_id, issue.id)}
         handleArchive={async () => archiveIssue && archiveIssue(issue.project_id, issue.id)}
         handleRestore={async () => restoreIssue && restoreIssue(issue.project_id, issue.id)}
-        readOnly={!isEditingAllowed || isCompletedCycle}
+        readOnly={!canEditProperties(issue.project_id ?? undefined) || isCompletedCycle}
       />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isEditingAllowed, isCompletedCycle, removeIssue, updateIssue, removeIssueFromView, archiveIssue, restoreIssue]
+    [isCompletedCycle, canEditProperties, removeIssue, updateIssue, removeIssueFromView, archiveIssue, restoreIssue]
   );
 
   const loadMoreIssues = useCallback(
@@ -122,14 +137,13 @@ export const BaseListRoot = observer((props: IBaseListRoot) => {
         } else {
           collapsedGroups.push(value);
         }
-        updateFilters(projectId?.toString() ?? "", EIssueFilterType.KANBAN_FILTERS,
-          { group_by: collapsedGroups } as TIssueKanbanFilters
-        );
+        updateFilters(projectId?.toString() ?? "", EIssueFilterType.KANBAN_FILTERS, {
+          group_by: collapsedGroups,
+        } as TIssueKanbanFilters);
       }
     },
     [workspaceSlug, issuesFilter, projectId, updateFilters]
   );
-
 
   return (
     <IssueLayoutHOC layout={EIssueLayoutTypes.LIST}>
@@ -153,6 +167,7 @@ export const BaseListRoot = observer((props: IBaseListRoot) => {
           handleOnDrop={handleOnDrop}
           handleCollapsedGroups={handleCollapsedGroups}
           collapsedGroups={collapsedGroups}
+          isEpic={isEpic}
         />
       </div>
     </IssueLayoutHOC>

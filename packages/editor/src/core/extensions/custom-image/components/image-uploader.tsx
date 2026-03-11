@@ -1,42 +1,38 @@
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef } from "react";
-import { Node as ProsemirrorNode } from "@tiptap/pm/model";
-import { Editor } from "@tiptap/core";
 import { ImageIcon } from "lucide-react";
-// helpers
-import { cn } from "@/helpers/common";
+// plane utils
+import { cn } from "@plane/utils";
+// constants
+import { ACCEPTED_FILE_EXTENSIONS } from "@/constants/config";
 // hooks
 import { useUploader, useDropZone, uploadFirstImageAndInsertRemaining } from "@/hooks/use-file-upload";
 // extensions
-import { getImageComponentImageFileMap, ImageAttributes } from "@/extensions/custom-image";
+import { CustoBaseImageNodeViewProps, getImageComponentImageFileMap } from "@/extensions/custom-image";
 
-export const CustomImageUploader = (props: {
-  failedToLoadImage: boolean;
-  editor: Editor;
-  selected: boolean;
+type CustomImageUploaderProps = CustoBaseImageNodeViewProps & {
+  maxFileSize: number;
   loadImageFromFileSystem: (file: string) => void;
+  failedToLoadImage: boolean;
   setIsUploaded: (isUploaded: boolean) => void;
-  node: ProsemirrorNode & {
-    attrs: ImageAttributes;
-  };
-  updateAttributes: (attrs: Record<string, any>) => void;
-  getPos: () => number;
-}) => {
+};
+
+export const CustomImageUploader = (props: CustomImageUploaderProps) => {
   const {
-    selected,
-    failedToLoadImage,
     editor,
+    failedToLoadImage,
+    getPos,
     loadImageFromFileSystem,
+    maxFileSize,
     node,
+    selected,
     setIsUploaded,
     updateAttributes,
-    getPos,
   } = props;
-  // ref
+  // refs
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   const hasTriggeredFilePickerRef = useRef(false);
-  const imageEntityId = node.attrs.id;
-
+  const { id: imageEntityId } = node.attrs;
+  // derived values
   const imageComponentImageFileMap = useMemo(() => getImageComponentImageFileMap(editor), [editor]);
 
   const onUpload = useCallback(
@@ -71,11 +67,17 @@ export const CustomImageUploader = (props: {
     [imageComponentImageFileMap, imageEntityId, updateAttributes, getPos]
   );
   // hooks
-  const { uploading: isImageBeingUploaded, uploadFile } = useUploader({ onUpload, editor, loadImageFromFileSystem });
-  const { draggedInside, onDrop, onDragEnter, onDragLeave } = useDropZone({
-    uploader: uploadFile,
+  const { uploading: isImageBeingUploaded, uploadFile } = useUploader({
     editor,
+    loadImageFromFileSystem,
+    maxFileSize,
+    onUpload,
+  });
+  const { draggedInside, onDrop, onDragEnter, onDragLeave } = useDropZone({
+    editor,
+    maxFileSize,
     pos: getPos(),
+    uploader: uploadFile,
   });
 
   // the meta data of the image component
@@ -102,11 +104,17 @@ export const CustomImageUploader = (props: {
   const onFileChange = useCallback(
     async (e: ChangeEvent<HTMLInputElement>) => {
       e.preventDefault();
-      const fileList = e.target.files;
-      if (!fileList) {
+      const filesList = e.target.files;
+      if (!filesList) {
         return;
       }
-      await uploadFirstImageAndInsertRemaining(editor, fileList, getPos(), uploadFile);
+      await uploadFirstImageAndInsertRemaining({
+        editor,
+        filesList,
+        maxFileSize,
+        pos: getPos(),
+        uploader: uploadFile,
+      });
     },
     [uploadFile, editor, getPos]
   );
@@ -121,7 +129,7 @@ export const CustomImageUploader = (props: {
       return "Uploading...";
     }
 
-    if (draggedInside) {
+    if (draggedInside && editor.isEditable) {
       return "Drop image here";
     }
 
@@ -131,14 +139,16 @@ export const CustomImageUploader = (props: {
   return (
     <div
       className={cn(
-        "image-upload-component flex items-center justify-start gap-2 py-3 px-2 rounded-lg text-custom-text-300 hover:text-custom-text-200 bg-custom-background-90 hover:bg-custom-background-80 border border-dashed border-custom-border-300 transition-all duration-200 ease-in-out cursor-default",
+        "image-upload-component flex items-center justify-start gap-2 py-3 px-2 rounded-lg text-custom-text-300 bg-custom-background-90 border border-dashed border-custom-border-300 transition-all duration-200 ease-in-out cursor-default",
         {
-          "hover:text-custom-text-200 cursor-pointer": editor.isEditable,
-          "bg-custom-background-80 text-custom-text-200": draggedInside,
-          "text-custom-primary-200 bg-custom-primary-100/10 hover:bg-custom-primary-100/10 hover:text-custom-primary-200 border-custom-primary-200/10":
-            selected,
-          "text-red-500 cursor-default hover:text-red-500": failedToLoadImage,
-          "bg-red-500/10 hover:bg-red-500/10": failedToLoadImage && selected,
+          "hover:text-custom-text-200 hover:bg-custom-background-80 cursor-pointer": editor.isEditable,
+          "bg-custom-background-80 text-custom-text-200": draggedInside && editor.isEditable,
+          "text-custom-primary-200 bg-custom-primary-100/10 border-custom-primary-200/10 hover:bg-custom-primary-100/10 hover:text-custom-primary-200":
+            selected && editor.isEditable,
+          "text-red-500 cursor-default": failedToLoadImage,
+          "hover:text-red-500": failedToLoadImage && editor.isEditable,
+          "bg-red-500/10": failedToLoadImage && selected,
+          "hover:bg-red-500/10": failedToLoadImage && selected && editor.isEditable,
         }
       )}
       onDrop={onDrop}
@@ -158,7 +168,7 @@ export const CustomImageUploader = (props: {
         ref={fileInputRef}
         hidden
         type="file"
-        accept=".jpg,.jpeg,.png,.webp"
+        accept={ACCEPTED_FILE_EXTENSIONS.join(",")}
         onChange={onFileChange}
         multiple
       />

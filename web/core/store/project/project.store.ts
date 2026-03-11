@@ -5,14 +5,17 @@ import { computedFn } from "mobx-utils";
 // helpers
 import { orderProjects, shouldFilterProject } from "@/helpers/project.helper";
 // services
-import { TProject } from "@/plane-web/types/projects/projects";
+import { TProject } from "@/plane-web/types/projects";
 import { IssueLabelService, IssueService } from "@/services/issue";
 import { ProjectService, ProjectStateService, ProjectArchiveService } from "@/services/project";
 // store
 import { CoreRootStore } from "../root.store";
 
+type ProjectOverviewCollapsible = "links" | "attachments";
+
 export interface IProjectStore {
   // observables
+  isUpdatingProject: boolean;
   loader: boolean;
   projectMap: {
     [projectId: string]: TProject; // projectId: project Info
@@ -28,6 +31,14 @@ export interface IProjectStore {
   // actions
   getProjectById: (projectId: string | undefined | null) => TProject | undefined;
   getProjectIdentifierById: (projectId: string | undefined | null) => string;
+  // collapsible
+  openCollapsibleSection: ProjectOverviewCollapsible[];
+  lastCollapsibleAction: ProjectOverviewCollapsible | null;
+
+  setOpenCollapsibleSection: (section: ProjectOverviewCollapsible[]) => void;
+  setLastCollapsibleAction: (section: ProjectOverviewCollapsible) => void;
+  toggleOpenCollapsibleSection: (section: ProjectOverviewCollapsible) => void;
+
   // fetch actions
   fetchProjects: (workspaceSlug: string) => Promise<TProject[]>;
   fetchProjectDetails: (workspaceSlug: string, projectId: string) => Promise<TProject>;
@@ -47,10 +58,14 @@ export interface IProjectStore {
 
 export class ProjectStore implements IProjectStore {
   // observables
+  isUpdatingProject: boolean = false;
   loader: boolean = false;
   projectMap: {
     [projectId: string]: TProject; // projectId: project Info
   } = {};
+  openCollapsibleSection: ProjectOverviewCollapsible[] = [];
+  lastCollapsibleAction: ProjectOverviewCollapsible | null = null;
+
   // root store
   rootStore: CoreRootStore;
   // service
@@ -63,8 +78,11 @@ export class ProjectStore implements IProjectStore {
   constructor(_rootStore: CoreRootStore) {
     makeObservable(this, {
       // observables
+      isUpdatingProject: observable,
       loader: observable.ref,
       projectMap: observable,
+      openCollapsibleSection: observable.ref,
+      lastCollapsibleAction: observable.ref,
       // computed
       filteredProjectIds: computed,
       workspaceProjectIds: computed,
@@ -84,6 +102,10 @@ export class ProjectStore implements IProjectStore {
       // CRUD actions
       createProject: action,
       updateProject: action,
+      // collapsible actions
+      setOpenCollapsibleSection: action,
+      setLastCollapsibleAction: action,
+      toggleOpenCollapsibleSection: action,
     });
     // root store
     this.rootStore = _rootStore;
@@ -201,6 +223,23 @@ export class ProjectStore implements IProjectStore {
       .map((project) => project.id);
     return projectIds;
   }
+
+  setOpenCollapsibleSection = (section: ProjectOverviewCollapsible[]) => {
+    this.openCollapsibleSection = section;
+    if (this.lastCollapsibleAction) this.lastCollapsibleAction = null;
+  };
+
+  setLastCollapsibleAction = (section: ProjectOverviewCollapsible) => {
+    this.openCollapsibleSection = [...this.openCollapsibleSection, section];
+  };
+
+  toggleOpenCollapsibleSection = (section: ProjectOverviewCollapsible) => {
+    if (this.openCollapsibleSection && this.openCollapsibleSection.includes(section)) {
+      this.openCollapsibleSection = this.openCollapsibleSection.filter((s) => s !== section);
+    } else {
+      this.openCollapsibleSection = [...this.openCollapsibleSection, section];
+    }
+  };
 
   /**
    * get Workspace projects using workspace slug
@@ -380,13 +419,20 @@ export class ProjectStore implements IProjectStore {
       const projectDetails = this.getProjectById(projectId);
       runInAction(() => {
         set(this.projectMap, [projectId], { ...projectDetails, ...data });
+        this.isUpdatingProject = true;
       });
       const response = await this.projectService.updateProject(workspaceSlug, projectId, data);
+      runInAction(() => {
+        this.isUpdatingProject = false;
+      });
       return response;
     } catch (error) {
       console.log("Failed to create project from project store");
       this.fetchProjects(workspaceSlug);
       this.fetchProjectDetails(workspaceSlug, projectId);
+      runInAction(() => {
+        this.isUpdatingProject = false;
+      });
       throw error;
     }
   };
@@ -404,6 +450,7 @@ export class ProjectStore implements IProjectStore {
       runInAction(() => {
         delete this.projectMap[projectId];
         if (this.rootStore.favorite.entityMap[projectId]) this.rootStore.favorite.removeFavoriteFromStore(projectId);
+        delete this.rootStore.user.permission.workspaceProjectsPermissions[workspaceSlug][projectId];
       });
     } catch (error) {
       console.log("Failed to delete project from project store");

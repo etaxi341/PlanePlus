@@ -7,8 +7,8 @@ import {
   TIssueCommentReaction,
   TIssueLink,
   TIssueReaction,
-  TIssueRelationTypes,
   TIssueDetailWidget,
+  TIssueServiceType,
 } from "@plane/types";
 // plane web store
 import {
@@ -17,6 +17,8 @@ import {
   IIssueActivityStoreActions,
   TActivityLoader,
 } from "@/plane-web/store/issue/issue-details/activity.store";
+import { RootStore } from "@/plane-web/store/root.store";
+import { TIssueRelationTypes } from "@/plane-web/types";
 import { IIssueRootStore } from "../root.store";
 import { IIssueAttachmentStore, IssueAttachmentStore, IIssueAttachmentStoreActions } from "./attachment.store";
 import { IIssueCommentStore, IssueCommentStore, IIssueCommentStoreActions, TCommentLoader } from "./comment.store";
@@ -37,6 +39,7 @@ export type TPeekIssue = {
   projectId: string;
   issueId: string;
   nestingLevel?: number;
+  isArchived?: boolean;
 };
 
 export type TIssueRelationModal = {
@@ -138,6 +141,8 @@ export class IssueDetail implements IIssueDetail {
   isRelationModalOpen: TIssueRelationModal | null = null;
   isSubIssuesModalOpen: string | null = null;
   attachmentDeleteModalId: string | null = null;
+  // service type
+  serviceType: TIssueServiceType;
   // store
   rootIssueStore: IIssueRootStore;
   issue: IIssueStore;
@@ -151,7 +156,7 @@ export class IssueDetail implements IIssueDetail {
   comment: IIssueCommentStore;
   commentReaction: IIssueCommentReactionStore;
 
-  constructor(rootStore: IIssueRootStore) {
+  constructor(rootStore: IIssueRootStore, serviceType: TIssueServiceType) {
     makeObservable(this, {
       // observables
       peekIssue: observable,
@@ -189,15 +194,16 @@ export class IssueDetail implements IIssueDetail {
     });
 
     // store
+    this.serviceType = serviceType;
     this.rootIssueStore = rootStore;
-    this.issue = new IssueStore(this);
-    this.reaction = new IssueReactionStore(this);
-    this.attachment = new IssueAttachmentStore(rootStore);
-    this.activity = new IssueActivityStore(rootStore.rootStore);
-    this.comment = new IssueCommentStore(this);
+    this.issue = new IssueStore(this, serviceType);
+    this.reaction = new IssueReactionStore(this, serviceType);
+    this.attachment = new IssueAttachmentStore(rootStore, serviceType);
+    this.activity = new IssueActivityStore(rootStore.rootStore as RootStore, serviceType);
+    this.comment = new IssueCommentStore(this, serviceType);
     this.commentReaction = new IssueCommentReactionStore(this);
-    this.subIssues = new IssueSubIssuesStore(this);
-    this.link = new IssueLinkStore(this);
+    this.subIssues = new IssueSubIssuesStore(this, serviceType);
+    this.link = new IssueLinkStore(this, serviceType);
     this.subscription = new IssueSubscriptionStore(this);
     this.relation = new IssueRelationStore(this);
   }
@@ -251,8 +257,8 @@ export class IssueDetail implements IIssueDetail {
     workspaceSlug: string,
     projectId: string,
     issueId: string,
-    issueType: "DEFAULT" | "ARCHIVED" | "DRAFT" = "DEFAULT"
-  ) => this.issue.fetchIssue(workspaceSlug, projectId, issueId, issueType);
+    issueStatus: "DEFAULT" | "DRAFT" = "DEFAULT"
+  ) => this.issue.fetchIssue(workspaceSlug, projectId, issueId, issueStatus);
   updateIssue = async (workspaceSlug: string, projectId: string, issueId: string, data: Partial<TIssue>) =>
     this.issue.updateIssue(workspaceSlug, projectId, issueId, data);
   removeIssue = async (workspaceSlug: string, projectId: string, issueId: string) =>
@@ -294,8 +300,8 @@ export class IssueDetail implements IIssueDetail {
     this.attachment.addAttachments(issueId, attachments);
   fetchAttachments = async (workspaceSlug: string, projectId: string, issueId: string) =>
     this.attachment.fetchAttachments(workspaceSlug, projectId, issueId);
-  createAttachment = async (workspaceSlug: string, projectId: string, issueId: string, data: FormData) =>
-    this.attachment.createAttachment(workspaceSlug, projectId, issueId, data);
+  createAttachment = async (workspaceSlug: string, projectId: string, issueId: string, file: File) =>
+    this.attachment.createAttachment(workspaceSlug, projectId, issueId, file);
   removeAttachment = async (workspaceSlug: string, projectId: string, issueId: string, attachmentId: string) =>
     this.attachment.removeAttachment(workspaceSlug, projectId, issueId, attachmentId);
 

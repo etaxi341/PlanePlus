@@ -2,30 +2,29 @@
 
 import React from "react";
 import { observer } from "mobx-react";
-import { useParams } from "next/navigation";
 // ui
 import { Loader } from "@plane/ui";
 // components
 import { CycleAnalyticsProgress, CycleSidebarHeader, CycleSidebarDetails } from "@/components/cycles";
-import useCyclesDetails from "../active-cycle/use-cycles-details";
 // hooks
+import useCyclesDetails from "../active-cycle/use-cycles-details";
 
 type Props = {
   handleClose: () => void;
   isArchived?: boolean;
-  cycleId?: string;
+  cycleId: string;
+  projectId: string;
+  workspaceSlug: string;
 };
 
 export const CycleDetailsSidebar: React.FC<Props> = observer((props) => {
-  const { handleClose, isArchived } = props;
-  // router
-  const { workspaceSlug, projectId, cycleId } = useParams();
+  const { handleClose, isArchived, projectId, workspaceSlug, cycleId } = props;
 
   // store hooks
   const { cycle: cycleDetails } = useCyclesDetails({
-    workspaceSlug: workspaceSlug.toString(),
-    projectId: projectId.toString(),
-    cycleId: cycleId?.toString() || props.cycleId,
+    workspaceSlug,
+    projectId,
+    cycleId,
   });
 
   if (!cycleDetails)
@@ -47,21 +46,17 @@ export const CycleDetailsSidebar: React.FC<Props> = observer((props) => {
     <div className="relative pb-2">
       <div className="flex flex-col gap-5 w-full">
         <CycleSidebarHeader
-          workspaceSlug={workspaceSlug.toString()}
-          projectId={projectId.toString()}
+          workspaceSlug={workspaceSlug}
+          projectId={projectId}
           cycleDetails={cycleDetails}
           isArchived={isArchived}
           handleClose={handleClose}
         />
-        <CycleSidebarDetails projectId={projectId.toString()} cycleDetails={cycleDetails} />
+        <CycleSidebarDetails projectId={projectId} cycleDetails={cycleDetails} />
       </div>
 
       {workspaceSlug && projectId && cycleDetails?.id && (
-        <CycleAnalyticsProgress
-          workspaceSlug={workspaceSlug.toString()}
-          projectId={projectId.toString()}
-          cycleId={cycleDetails?.id}
-        />
+        <CycleAnalyticsProgress workspaceSlug={workspaceSlug} projectId={projectId} cycleId={cycleDetails?.id} />
       )}
     </div>
   );

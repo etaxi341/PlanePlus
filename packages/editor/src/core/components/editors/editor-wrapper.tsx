@@ -1,4 +1,4 @@
-import { Editor, Extension } from "@tiptap/core";
+import { Editor, Extensions } from "@tiptap/core";
 // components
 import { EditorContainer } from "@/components/editors";
 // constants
@@ -12,13 +12,14 @@ import { EditorContentWrapper } from "./editor-content";
 
 type Props = IEditorProps & {
   children?: (editor: Editor) => React.ReactNode;
-  extensions: Extension<any, any>[];
+  extensions: Extensions;
 };
 
 export const EditorWrapper: React.FC<Props> = (props) => {
   const {
     children,
     containerClassName,
+    disabledExtensions,
     displayConfig = DEFAULT_DISPLAY_CONFIG,
     editorClassName = "",
     extensions,
@@ -28,12 +29,17 @@ export const EditorWrapper: React.FC<Props> = (props) => {
     forwardedRef,
     mentionHandler,
     onChange,
+    onTransaction,
+    handleEditorReady,
+    autofocus,
     placeholder,
     tabIndex,
     value,
   } = props;
 
   const editor = useEditor({
+    editable: true,
+    disabledExtensions,
     editorClassName,
     enableHistory: true,
     extensions,
@@ -43,6 +49,9 @@ export const EditorWrapper: React.FC<Props> = (props) => {
     initialValue,
     mentionHandler,
     onChange,
+    onTransaction,
+    handleEditorReady,
+    autofocus,
     placeholder,
     tabIndex,
     value,

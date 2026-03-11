@@ -2,13 +2,20 @@ from .analytic import AnalyticView
 from .api import APIActivityLog, APIToken
 from .asset import FileAsset
 from .base import BaseModel
-from .cycle import Cycle, CycleFavorite, CycleIssue, CycleUserProperties
-from .dashboard import Dashboard, DashboardWidget, Widget
+from .cycle import Cycle, CycleIssue, CycleUserProperties
+from .dashboard import DeprecatedDashboard, DeprecatedDashboardWidget, DeprecatedWidget
 from .deploy_board import DeployBoard
+from .draft import (
+    DraftIssue,
+    DraftIssueAssignee,
+    DraftIssueLabel,
+    DraftIssueModule,
+    DraftIssueCycle,
+)
 from .estimate import Estimate, EstimatePoint
 from .exporter import ExporterHistory
 from .importer import Importer
-from .inbox import Inbox, InboxIssue
+from .intake import Intake, IntakeIssue
 from .integration import (
     GithubCommentSync,
     GithubIssueSync,
@@ -23,7 +30,6 @@ from .issue import (
     Issue,
     IssueActivity,
     IssueAssignee,
-    IssueAttachment,
     IssueBlocker,
     IssueComment,
     IssueLabel,
@@ -35,80 +41,45 @@ from .issue import (
     IssueSequence,
     IssueSubscriber,
     IssueVote,
-    Label,
+    IssueVersion,
+    IssueDescriptionVersion,
 )
-from .module import (
-    Module,
-    ModuleFavorite,
-    ModuleIssue,
-    ModuleLink,
-    ModuleMember,
-    ModuleUserProperties,
-)
-from .notification import (
-    EmailNotificationLog,
-    Notification,
-    UserNotificationPreference,
-)
-from .page import (
-    Page,
-    PageFavorite,
-    PageLabel,
-    PageLog,
-    ProjectPage,
-    PageVersion,
-)
+from .module import Module, ModuleIssue, ModuleLink, ModuleMember, ModuleUserProperties
+from .notification import EmailNotificationLog, Notification, UserNotificationPreference
+from .page import Page, PageLabel, PageLog, ProjectPage, PageVersion
 from .project import (
     Project,
     ProjectBaseModel,
-    ProjectFavorite,
     ProjectIdentifier,
     ProjectMember,
     ProjectMemberInvite,
     ProjectPublicMember,
 )
-from .deploy_board import DeployBoard
 from .session import Session
 from .social_connection import SocialLoginConnection
 from .state import State
 from .user import Account, Profile, User
-from .view import IssueView, IssueViewFavorite
+from .view import IssueView
 from .webhook import Webhook, WebhookLog
 from .workspace import (
-    Team,
-    TeamMember,
     Workspace,
     WorkspaceBaseModel,
     WorkspaceMember,
     WorkspaceMemberInvite,
     WorkspaceTheme,
     WorkspaceUserProperties,
+    WorkspaceUserLink,
+    WorkspaceHomePreference
 )
-
-from .importer import Importer
-
-from .page import Page, PageLog, PageFavorite, PageLabel
-
-from .estimate import Estimate, EstimatePoint
-
-from .inbox import Inbox, InboxIssue
-
-from .analytic import AnalyticView
-
-from .notification import (
-    Notification,
-    UserNotificationPreference,
-    EmailNotificationLog,
-)
-
-from .exporter import ExporterHistory
-
-from .webhook import Webhook, WebhookLog
-
-from .dashboard import Dashboard, DashboardWidget, Widget
 
 from .favorite import UserFavorite
 
 from .issue_type import IssueType
 
 from .recent_visit import UserRecentVisit
+
+from .label import Label
+
+from .device import Device, DeviceSession
+
+from .sticky import Sticky

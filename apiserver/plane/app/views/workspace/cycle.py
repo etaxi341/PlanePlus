@@ -1,8 +1,5 @@
 # Django imports
-from django.db.models import (
-    Q,
-    Count,
-)
+from django.db.models import Q, Count
 
 # Third party modules
 from rest_framework import status
@@ -13,12 +10,10 @@ from plane.app.views.base import BaseAPIView
 from plane.db.models import Cycle
 from plane.app.permissions import WorkspaceViewerPermission
 from plane.app.serializers.cycle import CycleSerializer
-
+from plane.utils.timezone_converter import user_timezone_converter
 
 class WorkspaceCyclesEndpoint(BaseAPIView):
-    permission_classes = [
-        WorkspaceViewerPermission,
-    ]
+    permission_classes = [WorkspaceViewerPermission]
 
     def get(self, request, slug):
         cycles = (
@@ -33,6 +28,7 @@ class WorkspaceCyclesEndpoint(BaseAPIView):
                     filter=Q(
                         issue_cycle__issue__archived_at__isnull=True,
                         issue_cycle__issue__is_draft=False,
+                        issue_cycle__deleted_at__isnull=True,
                     ),
                 )
             )
@@ -43,6 +39,8 @@ class WorkspaceCyclesEndpoint(BaseAPIView):
                         issue_cycle__issue__state__group="completed",
                         issue_cycle__issue__archived_at__isnull=True,
                         issue_cycle__issue__is_draft=False,
+                        issue_cycle__issue__deleted_at__isnull=True,
+                        issue_cycle__deleted_at__isnull=True,
                     ),
                 )
             )
@@ -53,6 +51,8 @@ class WorkspaceCyclesEndpoint(BaseAPIView):
                         issue_cycle__issue__state__group="cancelled",
                         issue_cycle__issue__archived_at__isnull=True,
                         issue_cycle__issue__is_draft=False,
+                        issue_cycle__issue__deleted_at__isnull=True,
+                        issue_cycle__deleted_at__isnull=True,
                     ),
                 )
             )
@@ -63,6 +63,8 @@ class WorkspaceCyclesEndpoint(BaseAPIView):
                         issue_cycle__issue__state__group="started",
                         issue_cycle__issue__archived_at__isnull=True,
                         issue_cycle__issue__is_draft=False,
+                        issue_cycle__issue__deleted_at__isnull=True,
+                        issue_cycle__deleted_at__isnull=True,
                     ),
                 )
             )
@@ -73,6 +75,8 @@ class WorkspaceCyclesEndpoint(BaseAPIView):
                         issue_cycle__issue__state__group="unstarted",
                         issue_cycle__issue__archived_at__isnull=True,
                         issue_cycle__issue__is_draft=False,
+                        issue_cycle__issue__deleted_at__isnull=True,
+                        issue_cycle__deleted_at__isnull=True,
                     ),
                 )
             )
@@ -83,6 +87,8 @@ class WorkspaceCyclesEndpoint(BaseAPIView):
                         issue_cycle__issue__state__group="backlog",
                         issue_cycle__issue__archived_at__isnull=True,
                         issue_cycle__issue__is_draft=False,
+                        issue_cycle__issue__deleted_at__isnull=True,
+                        issue_cycle__deleted_at__isnull=True,
                     ),
                 )
             )

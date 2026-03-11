@@ -26,7 +26,7 @@ export type TModuleEstimateDistributionBase = {
 
 export type TModuleAssigneesDistribution = {
   assignee_id: string | null;
-  avatar: string | null;
+  avatar_url: string | null;
   first_name: string | null;
   last_name: string | null;
   display_name: string | null;
@@ -117,3 +117,8 @@ export type SelectModuleType =
   | undefined;
 
 export type TModulePlotType = "burndown" | "points";
+
+export type TPublicModule = {
+  id: string;
+  name: string;
+};

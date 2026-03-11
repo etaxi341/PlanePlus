@@ -1,19 +1,27 @@
 /* eslint-disable no-useless-catch */
 
 import concat from "lodash/concat";
+import orderBy from "lodash/orderBy";
 import set from "lodash/set";
-import sortBy from "lodash/sortBy";
 import uniq from "lodash/uniq";
 import update from "lodash/update";
 import { action, makeObservable, observable, runInAction } from "mobx";
 import { computedFn } from "mobx-utils";
-import { TIssueActivityComment, TIssueActivity, TIssueActivityMap, TIssueActivityIdMap } from "@plane/types";
+// plane package imports
+import { EIssueServiceType, E_SORT_ORDER } from "@plane/constants";
+import {
+  TIssueActivityComment,
+  TIssueActivity,
+  TIssueActivityMap,
+  TIssueActivityIdMap,
+  TIssueServiceType,
+} from "@plane/types";
 // plane web constants
 import { EActivityFilterType } from "@/plane-web/constants/issues";
-// plane web store types
-import { RootStore } from "@/plane-web/store/root.store";
 // services
 import { IssueActivityService } from "@/services/issue";
+// store
+import { CoreRootStore } from "@/store/root.store";
 
 export type TActivityLoader = "fetch" | "mutate" | undefined;
 
@@ -35,7 +43,7 @@ export interface IIssueActivityStore extends IIssueActivityStoreActions {
   // helper methods
   getActivitiesByIssueId: (issueId: string) => string[] | undefined;
   getActivityById: (activityId: string) => TIssueActivity | undefined;
-  getActivityCommentByIssueId: (issueId: string) => TIssueActivityComment[] | undefined;
+  getActivityCommentByIssueId: (issueId: string, sortOrder: E_SORT_ORDER) => TIssueActivityComment[] | undefined;
 }
 
 export class IssueActivityStore implements IIssueActivityStore {
@@ -45,9 +53,13 @@ export class IssueActivityStore implements IIssueActivityStore {
   activityMap: TIssueActivityMap = {};
 
   // services
+  serviceType;
   issueActivityService;
 
-  constructor(protected store: RootStore) {
+  constructor(
+    protected store: CoreRootStore,
+    serviceType: TIssueServiceType = EIssueServiceType.ISSUES
+  ) {
     makeObservable(this, {
       // observables
       loader: observable.ref,
@@ -56,8 +68,9 @@ export class IssueActivityStore implements IIssueActivityStore {
       // actions
       fetchActivities: action,
     });
+    this.serviceType = serviceType;
     // services
-    this.issueActivityService = new IssueActivityService();
+    this.issueActivityService = new IssueActivityService(this.serviceType);
   }
 
   // helper methods
@@ -71,13 +84,16 @@ export class IssueActivityStore implements IIssueActivityStore {
     return this.activityMap[activityId] ?? undefined;
   };
 
-  getActivityCommentByIssueId = computedFn((issueId: string) => {
+  getActivityCommentByIssueId = computedFn((issueId: string, sortOrder: E_SORT_ORDER) => {
     if (!issueId) return undefined;
 
     let activityComments: TIssueActivityComment[] = [];
 
+    const currentStore =
+      this.serviceType === EIssueServiceType.EPICS ? this.store.issue.epicDetail : this.store.issue.issueDetail;
+
     const activities = this.getActivitiesByIssueId(issueId) || [];
-    const comments = this.store.issue.issueDetail.comment.getCommentsByIssueId(issueId) || [];
+    const comments = currentStore.comment.getCommentsByIssueId(issueId) || [];
 
     activities.forEach((activityId) => {
       const activity = this.getActivityById(activityId);
@@ -90,7 +106,7 @@ export class IssueActivityStore implements IIssueActivityStore {
     });
 
     comments.forEach((commentId) => {
-      const comment = this.store.issue.issueDetail.comment.getCommentById(commentId);
+      const comment = currentStore.comment.getCommentById(commentId);
       if (!comment) return;
       activityComments.push({
         id: comment.id,
@@ -99,7 +115,7 @@ export class IssueActivityStore implements IIssueActivityStore {
       });
     });
 
-    activityComments = sortBy(activityComments, "created_at");
+    activityComments = orderBy(activityComments, (e) => new Date(e.created_at || 0), sortOrder);
 
     return activityComments;
   });

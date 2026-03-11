@@ -6,16 +6,18 @@ import useSWR from "swr";
 // ui
 import { ArchiveIcon, Breadcrumbs, LayersIcon, Header } from "@plane/ui";
 // components
-import { BreadcrumbLink, Logo } from "@/components/common";
+import { BreadcrumbLink } from "@/components/common";
 import { IssueDetailQuickActions } from "@/components/issues";
 // constants
 import { ISSUE_DETAILS } from "@/constants/fetch-keys";
 // hooks
 import { useProject } from "@/hooks/store";
+// plane web
+import { ProjectBreadcrumb } from "@/plane-web/components/breadcrumbs";
 // services
-import { IssueArchiveService } from "@/services/issue";
+import { IssueService } from "@/services/issue";
 
-const issueArchiveService = new IssueArchiveService();
+const issueService = new IssueService();
 
 export const ProjectArchivedIssueDetailsHeader = observer(() => {
   // router
@@ -24,14 +26,9 @@ export const ProjectArchivedIssueDetailsHeader = observer(() => {
   const { currentProjectDetails, loader } = useProject();
 
   const { data: issueDetails } = useSWR(
-    workspaceSlug && projectId && archivedIssueId ? ISSUE_DETAILS(archivedIssueId as string) : null,
+    workspaceSlug && projectId && archivedIssueId ? ISSUE_DETAILS(archivedIssueId.toString()) : null,
     workspaceSlug && projectId && archivedIssueId
-      ? () =>
-          issueArchiveService.retrieveArchivedIssue(
-            workspaceSlug as string,
-            projectId as string,
-            archivedIssueId as string
-          )
+      ? () => issueService.retrieve(workspaceSlug.toString(), projectId.toString(), archivedIssueId.toString())
       : null
   );
 
@@ -39,22 +36,7 @@ export const ProjectArchivedIssueDetailsHeader = observer(() => {
     <Header>
       <Header.LeftItem>
         <Breadcrumbs isLoading={loader}>
-          <Breadcrumbs.BreadcrumbItem
-            type="text"
-            link={
-              <BreadcrumbLink
-                href={`/${workspaceSlug}/projects`}
-                label={currentProjectDetails?.name ?? "Project"}
-                icon={
-                  currentProjectDetails && (
-                    <span className="grid place-items-center flex-shrink-0 h-4 w-4">
-                      <Logo logo={currentProjectDetails?.logo_props} size={16} />
-                    </span>
-                  )
-                }
-              />
-            }
-          />
+          <ProjectBreadcrumb />
           <Breadcrumbs.BreadcrumbItem
             type="text"
             link={

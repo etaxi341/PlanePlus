@@ -3,8 +3,10 @@ import set from "lodash/set";
 import { makeObservable, observable, action, runInAction } from "mobx";
 import { computedFn } from "mobx-utils";
 import { v4 as uuidv4 } from "uuid";
-// services
-import IssueService from "@/services/issue.service";
+// plane imports
+import { SitesFileService, SitesIssueService } from "@plane/services";
+import { TFileSignedURLResponse, TIssuePublicComment } from "@plane/types";
+import { EFileAssetType } from "@plane/types/src/enums";
 // store
 import { CoreRootStore } from "@/store/root.store";
 // types
@@ -28,9 +30,11 @@ export interface IIssueDetailStore {
   // issue actions
   fetchIssueDetails: (anchor: string, issueID: string) => void;
   // comment actions
-  addIssueComment: (anchor: string, issueID: string, data: any) => Promise<void>;
+  addIssueComment: (anchor: string, issueID: string, data: any) => Promise<TIssuePublicComment>;
   updateIssueComment: (anchor: string, issueID: string, commentID: string, data: any) => Promise<any>;
   deleteIssueComment: (anchor: string, issueID: string, commentID: string) => void;
+  uploadCommentAsset: (file: File, anchor: string, commentID?: string) => Promise<TFileSignedURLResponse>;
+  uploadIssueAsset: (file: File, anchor: string, commentID?: string) => Promise<TFileSignedURLResponse>;
   addCommentReaction: (anchor: string, issueID: string, commentID: string, reactionHex: string) => void;
   removeCommentReaction: (anchor: string, issueID: string, commentID: string, reactionHex: string) => void;
   // reaction actions
@@ -53,7 +57,8 @@ export class IssueDetailStore implements IIssueDetailStore {
   // root store
   rootStore: CoreRootStore;
   // services
-  issueService: IssueService;
+  issueService: SitesIssueService;
+  fileService: SitesFileService;
 
   constructor(_rootStore: CoreRootStore) {
     makeObservable(this, {
@@ -72,6 +77,8 @@ export class IssueDetailStore implements IIssueDetailStore {
       addIssueComment: action,
       updateIssueComment: action,
       deleteIssueComment: action,
+      uploadCommentAsset: action,
+      uploadIssueAsset: action,
       addCommentReaction: action,
       removeCommentReaction: action,
       // reaction actions
@@ -82,7 +89,8 @@ export class IssueDetailStore implements IIssueDetailStore {
       removeIssueVote: action,
     });
     this.rootStore = _rootStore;
-    this.issueService = new IssueService();
+    this.issueService = new SitesIssueService();
+    this.fileService = new SitesFileService();
   }
 
   setPeekId = (issueID: string | null) => {
@@ -113,7 +121,7 @@ export class IssueDetailStore implements IIssueDetailStore {
    */
   fetchIssueById = async (anchorId: string, issueId: string) => {
     try {
-      const issueDetails = await this.issueService.getIssueById(anchorId, issueId);
+      const issueDetails = await this.issueService.retrieve(anchorId, issueId);
 
       runInAction(() => {
         set(this.details, [issueId], issueDetails);
@@ -136,7 +144,7 @@ export class IssueDetailStore implements IIssueDetailStore {
       this.error = null;
 
       const issueDetails = await this.fetchIssueById(anchor, issueID);
-      const commentsResponse = await this.issueService.getIssueComments(anchor, issueID);
+      const commentsResponse = await this.issueService.listComments(anchor, issueID);
 
       if (issueDetails) {
         runInAction(() => {
@@ -158,7 +166,7 @@ export class IssueDetailStore implements IIssueDetailStore {
   addIssueComment = async (anchor: string, issueID: string, data: any) => {
     try {
       const issueDetails = this.getIssueById(issueID);
-      const issueCommentResponse = await this.issueService.createIssueComment(anchor, issueID, data);
+      const issueCommentResponse = await this.issueService.addComment(anchor, issueID, data);
       if (issueDetails) {
         runInAction(() => {
           set(this.details, [issueID, "comments"], [...(issueDetails?.comments ?? []), issueCommentResponse]);
@@ -186,9 +194,9 @@ export class IssueDetailStore implements IIssueDetailStore {
         };
       });
 
-      await this.issueService.updateIssueComment(anchor, issueID, commentID, data);
+      await this.issueService.updateComment(anchor, issueID, commentID, data);
     } catch (error) {
-      const issueComments = await this.issueService.getIssueComments(anchor, issueID);
+      const issueComments = await this.issueService.listComments(anchor, issueID);
 
       runInAction(() => {
         this.details = {
@@ -204,7 +212,7 @@ export class IssueDetailStore implements IIssueDetailStore {
 
   deleteIssueComment = async (anchor: string, issueID: string, commentID: string) => {
     try {
-      await this.issueService.deleteIssueComment(anchor, issueID, commentID);
+      await this.issueService.removeComment(anchor, issueID, commentID);
       const remainingComments = this.details[issueID].comments.filter((c) => c.id != commentID);
       runInAction(() => {
         this.details = {
@@ -217,6 +225,40 @@ export class IssueDetailStore implements IIssueDetailStore {
       });
     } catch (error) {
       console.log("Failed to add issue vote");
+    }
+  };
+
+  uploadCommentAsset = async (file: File, anchor: string, commentID?: string) => {
+    try {
+      const res = await this.fileService.uploadAsset(
+        anchor,
+        {
+          entity_identifier: commentID ?? "",
+          entity_type: EFileAssetType.COMMENT_DESCRIPTION,
+        },
+        file
+      );
+      return res;
+    } catch (error) {
+      console.log("Error in uploading comment asset:", error);
+      throw new Error("Asset upload failed. Please try again later.");
+    }
+  };
+
+  uploadIssueAsset = async (file: File, anchor: string, commentID?: string) => {
+    try {
+      const res = await this.fileService.uploadAsset(
+        anchor,
+        {
+          entity_identifier: commentID ?? "",
+          entity_type: EFileAssetType.ISSUE_DESCRIPTION,
+        },
+        file
+      );
+      return res;
+    } catch (error) {
+      console.log("Error in uploading comment asset:", error);
+      throw new Error("Asset upload failed. Please try again later.");
     }
   };
 
@@ -244,11 +286,11 @@ export class IssueDetailStore implements IIssueDetailStore {
         };
       });
 
-      await this.issueService.createCommentReaction(anchor, commentID, {
+      await this.issueService.addCommentReaction(anchor, commentID, {
         reaction: reactionHex,
       });
     } catch (error) {
-      const issueComments = await this.issueService.getIssueComments(anchor, issueID);
+      const issueComments = await this.issueService.listComments(anchor, issueID);
 
       runInAction(() => {
         this.details = {
@@ -280,9 +322,9 @@ export class IssueDetailStore implements IIssueDetailStore {
         };
       });
 
-      await this.issueService.deleteCommentReaction(anchor, commentID, reactionHex);
+      await this.issueService.removeCommentReaction(anchor, commentID, reactionHex);
     } catch (error) {
-      const issueComments = await this.issueService.getIssueComments(anchor, issueID);
+      const issueComments = await this.issueService.listComments(anchor, issueID);
 
       runInAction(() => {
         this.details = {
@@ -312,12 +354,12 @@ export class IssueDetailStore implements IIssueDetailStore {
         );
       });
 
-      await this.issueService.createIssueReaction(anchor, issueID, {
+      await this.issueService.addReaction(anchor, issueID, {
         reaction: reactionHex,
       });
     } catch (error) {
       console.log("Failed to add issue vote");
-      const issueReactions = await this.issueService.getIssueReactions(anchor, issueID);
+      const issueReactions = await this.issueService.listReactions(anchor, issueID);
       runInAction(() => {
         set(this.details, [issueID, "reaction_items"], issueReactions);
       });
@@ -334,10 +376,10 @@ export class IssueDetailStore implements IIssueDetailStore {
         set(this.details, [issueID, "reaction_items"], newReactions);
       });
 
-      await this.issueService.deleteIssueReaction(anchor, issueID, reactionHex);
+      await this.issueService.removeReaction(anchor, issueID, reactionHex);
     } catch (error) {
       console.log("Failed to remove issue reaction");
-      const reactions = await this.issueService.getIssueReactions(anchor, issueID);
+      const reactions = await this.issueService.listReactions(anchor, issueID);
       runInAction(() => {
         set(this.details, [issueID, "reaction_items"], reactions);
       });
@@ -366,10 +408,10 @@ export class IssueDetailStore implements IIssueDetailStore {
         });
       });
 
-      await this.issueService.createIssueVote(anchor, issueID, data);
+      await this.issueService.addVote(anchor, issueID, data);
     } catch (error) {
       console.log("Failed to add issue vote");
-      const issueVotes = await this.issueService.getIssueVotes(anchor, issueID);
+      const issueVotes = await this.issueService.listVotes(anchor, issueID);
 
       runInAction(() => {
         set(this.details, [issueID, "vote_items"], issueVotes);
@@ -387,10 +429,10 @@ export class IssueDetailStore implements IIssueDetailStore {
         set(this.details, [issueID, "vote_items"], newVotes);
       });
 
-      await this.issueService.deleteIssueVote(anchor, issueID);
+      await this.issueService.removeVote(anchor, issueID);
     } catch (error) {
       console.log("Failed to remove issue vote");
-      const issueVotes = await this.issueService.getIssueVotes(anchor, issueID);
+      const issueVotes = await this.issueService.listVotes(anchor, issueID);
 
       runInAction(() => {
         set(this.details, [issueID, "vote_items"], issueVotes);

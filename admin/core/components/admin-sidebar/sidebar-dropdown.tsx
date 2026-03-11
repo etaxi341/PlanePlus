@@ -5,13 +5,13 @@ import { observer } from "mobx-react";
 import { useTheme as useNextTheme } from "next-themes";
 import { LogOut, UserCog2, Palette } from "lucide-react";
 import { Menu, Transition } from "@headlessui/react";
+// plane internal packages
+import { API_BASE_URL } from "@plane/constants";
+import  {AuthService } from "@plane/services";
 import { Avatar } from "@plane/ui";
+import { getFileURL, cn } from "@plane/utils";
 // hooks
-import { API_BASE_URL, cn } from "@/helpers/common.helper";
 import { useTheme, useUser } from "@/hooks/store";
-// helpers
-// services
-import { AuthService } from "@/services/auth.service";
 
 // service initialization
 const authService = new AuthService();
@@ -122,7 +122,7 @@ export const SidebarDropdown = observer(() => {
           <Menu.Button className="grid place-items-center outline-none">
             <Avatar
               name={currentUser.display_name}
-              src={currentUser.avatar ?? undefined}
+              src={getFileURL(currentUser.avatar_url)}
               size={24}
               shape="square"
               className="!text-base"

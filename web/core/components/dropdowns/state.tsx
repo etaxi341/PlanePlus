@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment, ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useRef, useState } from "react";
 import { observer } from "mobx-react";
 import { useParams } from "next/navigation";
 import { usePopper } from "react-popper";
-import { Check, ChevronDown, Search } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import { Combobox } from "@headlessui/react";
+import { useTranslation } from "@plane/i18n";
 // ui
 import { ComboDropDown, Spinner, StateGroupIcon } from "@plane/ui";
 // helpers
@@ -13,6 +14,8 @@ import { cn } from "@/helpers/common.helper";
 // hooks
 import { useProjectState } from "@/hooks/store";
 import { useDropdown } from "@/hooks/use-dropdown";
+// Plane-web
+import { StateOption } from "@/plane-web/components/workflow";
 // components
 import { DropdownButton } from "./buttons";
 // constants
@@ -30,6 +33,8 @@ type Props = TDropdownProps & {
   showDefaultState?: boolean;
   value: string | undefined | null;
   renderByDefault?: boolean;
+  stateIds?: string[];
+  filterAvailableStateIds?: boolean;
 };
 
 export const StateDropdown: React.FC<Props> = observer((props) => {
@@ -52,6 +57,8 @@ export const StateDropdown: React.FC<Props> = observer((props) => {
     tabIndex,
     value,
     renderByDefault = true,
+    stateIds,
+    filterAvailableStateIds = true,
   } = props;
   // states
   const [query, setQuery] = useState("");
@@ -76,18 +83,21 @@ export const StateDropdown: React.FC<Props> = observer((props) => {
     ],
   });
   // store hooks
+  const { t } = useTranslation();
   const { workspaceSlug } = useParams();
   const { fetchProjectStates, getProjectStates, getStateById } = useProjectState();
-  const statesList = getProjectStates(projectId);
-  const defaultState = statesList?.find((state) => state.default);
+  const statesList = stateIds
+    ? stateIds.map((stateId) => getStateById(stateId)).filter((state) => !!state)
+    : getProjectStates(projectId);
+  const defaultState = statesList?.find((state) => state?.default);
   const stateValue = !!value ? value : showDefaultState ? defaultState?.id : undefined;
 
   const options = statesList?.map((state) => ({
-    value: state.id,
+    value: state?.id,
     query: `${state?.name}`,
     content: (
       <div className="flex items-center gap-2">
-        <StateGroupIcon stateGroup={state.group} color={state.color} className="h-3 w-3 flex-shrink-0" />
+        <StateGroupIcon stateGroup={state?.group ?? "backlog"} color={state?.color} className="h-3 w-3 flex-shrink-0" />
         <span className="flex-grow truncate">{state?.name}</span>
       </div>
     ),
@@ -116,11 +126,6 @@ export const StateDropdown: React.FC<Props> = observer((props) => {
     setIsOpen,
     setQuery,
   });
-
-  useEffect(() => {
-    if (projectId) onOpen();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
 
   const dropdownOnChange = (val: string) => {
     onChange(val);
@@ -157,8 +162,8 @@ export const StateDropdown: React.FC<Props> = observer((props) => {
           <DropdownButton
             className={buttonClassName}
             isActive={isOpen}
-            tooltipHeading="State"
-            tooltipContent={selectedState?.name ?? "State"}
+            tooltipHeading={t("state")}
+            tooltipContent={selectedState?.name ?? t("state")}
             showTooltip={showTooltip}
             variant={buttonVariant}
             renderToolTipByDefault={renderByDefault}
@@ -175,7 +180,7 @@ export const StateDropdown: React.FC<Props> = observer((props) => {
                   />
                 )}
                 {BUTTON_VARIANTS_WITH_TEXT.includes(buttonVariant) && (
-                  <span className="flex-grow truncate">{selectedState?.name ?? "State"}</span>
+                  <span className="flex-grow truncate">{selectedState?.name ?? t("state")}</span>
                 )}
                 {dropdownArrow && (
                   <ChevronDown className={cn("h-2.5 w-2.5 flex-shrink-0", dropdownArrowClassName)} aria-hidden="true" />
@@ -226,28 +231,20 @@ export const StateDropdown: React.FC<Props> = observer((props) => {
               {filteredOptions ? (
                 filteredOptions.length > 0 ? (
                   filteredOptions.map((option) => (
-                    <Combobox.Option
+                    <StateOption
                       key={option.value}
-                      value={option.value}
-                      className={({ active, selected }) =>
-                        `flex w-full cursor-pointer select-none items-center justify-between gap-2 truncate rounded px-1 py-1.5 ${
-                          active ? "bg-custom-background-80" : ""
-                        } ${selected ? "text-custom-text-100" : "text-custom-text-200"}`
-                      }
-                    >
-                      {({ selected }) => (
-                        <>
-                          <span className="flex-grow truncate">{option.content}</span>
-                          {selected && <Check className="h-3.5 w-3.5 flex-shrink-0" />}
-                        </>
-                      )}
-                    </Combobox.Option>
+                      option={option}
+                      projectId={projectId}
+                      filterAvailableStateIds={filterAvailableStateIds}
+                      selectedValue={value}
+                      className="flex w-full cursor-pointer select-none items-center justify-between gap-2 truncate rounded px-1 py-1.5"
+                    />
                   ))
                 ) : (
-                  <p className="px-1.5 py-1 italic text-custom-text-400">No matches found</p>
+                  <p className="px-1.5 py-1 italic text-custom-text-400">{t("no_matching_results")}</p>
                 )
               ) : (
-                <p className="px-1.5 py-1 italic text-custom-text-400">Loading...</p>
+                <p className="px-1.5 py-1 italic text-custom-text-400">{t("loading")}</p>
               )}
             </div>
           </div>

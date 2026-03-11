@@ -1,12 +1,22 @@
-import { TIssueComment } from "@plane/types";
+import { EIssueServiceType } from "@plane/constants";
+// plane types
+import { TFileSignedURLResponse, TIssueComment, TIssueServiceType } from "@plane/types";
+// helpers
 import { API_BASE_URL } from "@/helpers/common.helper";
+import { generateFileUploadPayload, getFileMetaDataForUpload } from "@/helpers/file.helper";
+// services
 import { APIService } from "@/services/api.service";
-// types
-// helper
+import { FileUploadService } from "@/services/file-upload.service";
 
 export class IssueCommentService extends APIService {
-  constructor() {
+  private fileUploadService: FileUploadService;
+  private serviceType: TIssueServiceType;
+
+  constructor(serviceType: TIssueServiceType = EIssueServiceType.ISSUES) {
     super(API_BASE_URL);
+    // upload service
+    this.fileUploadService = new FileUploadService();
+    this.serviceType = serviceType;
   }
 
   async getIssueComments(
@@ -19,9 +29,9 @@ export class IssueCommentService extends APIService {
         }
       | object = {}
   ): Promise<TIssueComment[]> {
-    return this.get(`/api/workspaces/${workspaceSlug}/projects/${projectId}/issues/${issueId}/history/`, {
+    return this.get(`/api/workspaces/${workspaceSlug}/projects/${projectId}/${this.serviceType}/${issueId}/history/`, {
       params: {
-        activity_type: "issue-comment",
+        activity_type: `${this.serviceType === EIssueServiceType.EPICS ? "epic-comment" : "issue-comment"}`,
         ...params,
       },
     })
@@ -36,8 +46,11 @@ export class IssueCommentService extends APIService {
     projectId: string,
     issueId: string,
     data: Partial<TIssueComment>
-  ): Promise<any> {
-    return this.post(`/api/workspaces/${workspaceSlug}/projects/${projectId}/issues/${issueId}/comments/`, data)
+  ): Promise<TIssueComment> {
+    return this.post(
+      `/api/workspaces/${workspaceSlug}/projects/${projectId}/${this.serviceType}/${issueId}/comments/`,
+      data
+    )
       .then((response) => response?.data)
       .catch((error) => {
         throw error?.response?.data;
@@ -50,9 +63,9 @@ export class IssueCommentService extends APIService {
     issueId: string,
     commentId: string,
     data: Partial<TIssueComment>
-  ): Promise<any> {
+  ): Promise<void> {
     return this.patch(
-      `/api/workspaces/${workspaceSlug}/projects/${projectId}/issues/${issueId}/comments/${commentId}/`,
+      `/api/workspaces/${workspaceSlug}/projects/${projectId}/${this.serviceType}/${issueId}/comments/${commentId}/`,
       data
     )
       .then((response) => response?.data)
@@ -61,9 +74,14 @@ export class IssueCommentService extends APIService {
       });
   }
 
-  async deleteIssueComment(workspaceSlug: string, projectId: string, issueId: string, commentId: string): Promise<any> {
+  async deleteIssueComment(
+    workspaceSlug: string,
+    projectId: string,
+    issueId: string,
+    commentId: string
+  ): Promise<void> {
     return this.delete(
-      `/api/workspaces/${workspaceSlug}/projects/${projectId}/issues/${issueId}/comments/${commentId}/`
+      `/api/workspaces/${workspaceSlug}/projects/${projectId}/${this.serviceType}/${issueId}/comments/${commentId}/`
     )
       .then((response) => response?.data)
       .catch((error) => {

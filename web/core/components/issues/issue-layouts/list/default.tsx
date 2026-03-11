@@ -18,9 +18,7 @@ import {
 } from "@plane/types";
 // components
 import { MultipleSelectGroup } from "@/components/core";
-
 // hooks
-import { useCycle, useLabel, useMember, useModule, useProject, useProjectState } from "@/hooks/store";
 import { useIssueStoreType } from "@/hooks/use-issue-layout-store";
 // plane web components
 import { IssueBulkOperationsRoot } from "@/plane-web/components/issues";
@@ -49,7 +47,8 @@ export interface IList {
   isCompletedCycle?: boolean;
   loadMoreIssues: (groupId?: string) => void;
   handleCollapsedGroups: (value: string) => void;
-  collapsedGroups : TIssueKanbanFilters;
+  collapsedGroups: TIssueKanbanFilters;
+  isEpic?: boolean;
 }
 
 export const List: React.FC<IList> = observer((props) => {
@@ -71,33 +70,22 @@ export const List: React.FC<IList> = observer((props) => {
     isCompletedCycle = false,
     loadMoreIssues,
     handleCollapsedGroups,
-    collapsedGroups
+    collapsedGroups,
+    isEpic = false,
   } = props;
 
   const storeType = useIssueStoreType();
-  // store hooks
-  const member = useMember();
-  const project = useProject();
-  const label = useLabel();
-  const projectState = useProjectState();
-  const cycle = useCycle();
-  const projectModule = useModule();
   // plane web hooks
   const isBulkOperationsEnabled = useBulkOperationStatus();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const groups = getGroupByColumns(
-    group_by as GroupByColumnTypes,
-    project,
-    cycle,
-    projectModule,
-    label,
-    projectState,
-    member,
-    true,
-    isWorkspaceLevel(storeType)
-  );
+  const groups = getGroupByColumns({
+    groupBy: group_by as GroupByColumnTypes,
+    includeNone: true,
+    isWorkspaceLevel: isWorkspaceLevel(storeType),
+    isEpic: isEpic,
+  });
 
   // Enable Auto Scroll for Main Kanban
   useEffect(() => {
@@ -133,11 +121,14 @@ export const List: React.FC<IList> = observer((props) => {
   } else {
     entities = orderedGroups;
   }
-
   return (
     <div className="relative size-full flex flex-col">
       {groups && (
-        <MultipleSelectGroup containerRef={containerRef} entities={entities} disabled={!isBulkOperationsEnabled}>
+        <MultipleSelectGroup
+          containerRef={containerRef}
+          entities={entities}
+          disabled={!isBulkOperationsEnabled || isEpic}
+        >
           {(helpers) => (
             <>
               <div
@@ -169,6 +160,7 @@ export const List: React.FC<IList> = observer((props) => {
                     selectionHelpers={helpers}
                     handleCollapsedGroups={handleCollapsedGroups}
                     collapsedGroups={collapsedGroups}
+                    isEpic={isEpic}
                   />
                 ))}
               </div>

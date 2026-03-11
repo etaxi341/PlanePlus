@@ -8,6 +8,7 @@ import { Sparkle } from "lucide-react";
 import { EditorRefApi } from "@plane/editor";
 // types
 import { TIssue } from "@plane/types";
+import { EFileAssetType } from "@plane/types/src/enums";
 // ui
 import { Loader, setToast, TOAST_TYPE } from "@plane/ui";
 // components
@@ -22,12 +23,17 @@ import { getTabIndex } from "@/helpers/tab-indices.helper";
 import { useInstance, useWorkspace } from "@/hooks/store";
 import useKeypress from "@/hooks/use-keypress";
 import { usePlatformOS } from "@/hooks/use-platform-os";
+// plane web services
+import { WorkspaceService } from "@/plane-web/services";
 // services
 import { AIService } from "@/services/ai.service";
+import { FileService } from "@/services/file.service";
 
 type TIssueDescriptionEditorProps = {
   control: Control<TIssue>;
+  isDraft: boolean;
   issueName: string;
+  issueId: string | undefined;
   descriptionHtmlData: string | undefined;
   editorRef: React.MutableRefObject<EditorRefApi | null>;
   submitBtnRef: React.MutableRefObject<HTMLButtonElement | null>;
@@ -38,16 +44,21 @@ type TIssueDescriptionEditorProps = {
   handleDescriptionHTMLDataChange: (descriptionHtmlData: string) => void;
   setGptAssistantModal: React.Dispatch<React.SetStateAction<boolean>>;
   handleGptAssistantClose: () => void;
+  onAssetUpload: (assetId: string) => void;
   onClose: () => void;
 };
 
 // services
+const workspaceService = new WorkspaceService();
 const aiService = new AIService();
+const fileService = new FileService();
 
 export const IssueDescriptionEditor: React.FC<TIssueDescriptionEditorProps> = observer((props) => {
   const {
     control,
+    isDraft,
     issueName,
+    issueId,
     descriptionHtmlData,
     editorRef,
     submitBtnRef,
@@ -58,6 +69,7 @@ export const IssueDescriptionEditor: React.FC<TIssueDescriptionEditorProps> = ob
     handleDescriptionHTMLDataChange,
     setGptAssistantModal,
     handleGptAssistantClose,
+    onAssetUpload,
     onClose,
   } = props;
   // states
@@ -179,7 +191,33 @@ export const IssueDescriptionEditor: React.FC<TIssueDescriptionEditorProps> = ob
                 ref={editorRef}
                 tabIndex={getIndex("description_html")}
                 placeholder={getDescriptionPlaceholder}
+                searchMentionCallback={async (payload) =>
+                  await workspaceService.searchEntity(workspaceSlug?.toString() ?? "", {
+                    ...payload,
+                    project_id: projectId?.toString() ?? "",
+                  })
+                }
                 containerClassName="pt-3 min-h-[120px]"
+                uploadFile={async (file) => {
+                  try {
+                    const { asset_id } = await fileService.uploadProjectAsset(
+                      workspaceSlug,
+                      projectId,
+                      {
+                        entity_identifier: issueId ?? "",
+                        entity_type: isDraft
+                          ? EFileAssetType.DRAFT_ISSUE_DESCRIPTION
+                          : EFileAssetType.ISSUE_DESCRIPTION,
+                      },
+                      file
+                    );
+                    onAssetUpload(asset_id);
+                    return asset_id;
+                  } catch (error) {
+                    console.log("Error in uploading issue asset:", error);
+                    throw new Error("Asset upload failed. Please try again later.");
+                  }
+                }}
               />
             )}
           />
@@ -226,6 +264,8 @@ export const IssueDescriptionEditor: React.FC<TIssueDescriptionEditorProps> = ob
                     AI
                   </button>
                 }
+                workspaceSlug={workspaceSlug}
+                projectId={projectId}
               />
             )}
           </div>

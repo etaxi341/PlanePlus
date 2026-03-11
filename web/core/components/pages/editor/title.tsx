@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, useState } from "react";
+import { useState } from "react";
 import { observer } from "mobx-react";
 // editor
 import { EditorRefApi } from "@plane/editor";
@@ -8,13 +8,14 @@ import { EditorRefApi } from "@plane/editor";
 import { TextArea } from "@plane/ui";
 // helpers
 import { cn } from "@/helpers/common.helper";
+import { getPageName } from "@/helpers/page.helper";
 // hooks
 import { usePageFilters } from "@/hooks/use-page-filters";
 
 type Props = {
   editorRef: React.RefObject<EditorRefApi>;
   readOnly: boolean;
-  title: string;
+  title: string | undefined;
   updateTitle: (title: string) => void;
 };
 
@@ -23,27 +24,31 @@ export const PageEditorTitle: React.FC<Props> = observer((props) => {
   // states
   const [isLengthVisible, setIsLengthVisible] = useState(false);
   // page filters
-  const { fontSize, fontStyle } = usePageFilters();
+  const { fontSize } = usePageFilters();
   // ui
-  const titleClassName = cn("bg-transparent tracking-[-2%] font-semibold", {
-    "text-[1.6rem] leading-[1.8rem]": fontSize === "small-font",
-    "text-[2rem] leading-[2.25rem]": fontSize === "large-font",
+  const titleClassName = cn("bg-transparent tracking-[-2%] font-bold", {
+    "text-[1.6rem] leading-[1.9rem]": fontSize === "small-font",
+    "text-[2rem] leading-[2.375rem]": fontSize === "large-font",
   });
-  const titleStyle: CSSProperties = {
-    fontFamily: fontStyle,
-  };
 
   return (
-    <>
+    <div className="relative w-full flex-shrink-0 md:pl-5 px-4">
       {readOnly ? (
-        <h6 className={cn(titleClassName, "break-words")} style={titleStyle}>
-          {title}
+        <h6
+          className={cn(
+            titleClassName,
+            {
+              "text-custom-text-400": !title,
+            },
+            "break-words pb-1.5"
+          )}
+        >
+          {getPageName(title)}
         </h6>
       ) : (
         <>
           <TextArea
             className={cn(titleClassName, "w-full outline-none p-0 border-none resize-none rounded-none")}
-            style={titleStyle}
             placeholder="Untitled"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -68,15 +73,15 @@ export const PageEditorTitle: React.FC<Props> = observer((props) => {
           >
             <span
               className={cn({
-                "text-red-500": title.length > 255,
+                "text-red-500": title && title.length > 255,
               })}
             >
-              {title.length}
+              {title?.length}
             </span>
             /255
           </div>
         </>
       )}
-    </>
+    </div>
   );
 });

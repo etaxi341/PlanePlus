@@ -2,25 +2,27 @@
 
 import { useEffect, useState } from "react";
 // types
-import { TIssue } from "@plane/types";
+import { TDeDupeIssue, TIssue } from "@plane/types";
 // ui
 import { AlertModalCore, TOAST_TYPE, setToast } from "@plane/ui";
 // constants
 import { PROJECT_ERROR_MESSAGES } from "@/constants/project";
 // hooks
 import { useIssues, useProject, useUser, useUserPermissions } from "@/hooks/store";
+// plane-web
 import { EUserPermissions, EUserPermissionsLevel } from "@/plane-web/constants/user-permissions";
 type Props = {
   isOpen: boolean;
   handleClose: () => void;
   dataId?: string | null | undefined;
-  data?: TIssue;
+  data?: TIssue | TDeDupeIssue;
   isSubIssue?: boolean;
   onSubmit?: () => Promise<void>;
+  isEpic?: boolean;
 };
 
 export const DeleteIssueModal: React.FC<Props> = (props) => {
-  const { dataId, data, isOpen, handleClose, isSubIssue = false, onSubmit } = props;
+  const { dataId, data, isOpen, handleClose, isSubIssue = false, onSubmit, isEpic = false } = props;
   // states
   const [isDeleting, setIsDeleting] = useState(false);
   // store hooks
@@ -68,12 +70,14 @@ export const DeleteIssueModal: React.FC<Props> = (props) => {
           setToast({
             type: TOAST_TYPE.SUCCESS,
             title: "Success!",
-            message: `${isSubIssue ? "Sub-issue" : "Issue"} deleted successfully`,
+            message: `${isSubIssue ? "Sub-issue" : isEpic ? "Epic" : "Issue"} deleted successfully`,
           });
           onClose();
         })
         .catch((errors) => {
-          const isPermissionError = errors?.error === "Only admin or creator can delete the issue";
+          const isPermissionError =
+            errors?.error ===
+            `Only admin or creator can delete the ${isSubIssue ? "sub-issue" : isEpic ? "epic" : "issue"}`;
           const currentError = isPermissionError
             ? PROJECT_ERROR_MESSAGES.permissionError
             : PROJECT_ERROR_MESSAGES.issueDeleteError;
@@ -92,14 +96,14 @@ export const DeleteIssueModal: React.FC<Props> = (props) => {
       handleSubmit={handleIssueDelete}
       isSubmitting={isDeleting}
       isOpen={isOpen}
-      title="Delete issue"
+      title={`Delete ${isEpic ? "epic" : "issue"}`}
       content={
         <>
-          Are you sure you want to delete issue{" "}
+          {`Are you sure you want to delete ${isEpic ? "epic" : "issue"} `}
           <span className="break-words font-medium text-custom-text-100">
             {projectDetails?.identifier}-{issue?.sequence_id}
           </span>
-          {""}? All of the data related to the issue will be permanently removed. This action cannot be undone.
+          {` ? All of the data related to the ${isEpic ? "epic" : "issue"} will be permanently removed. This action cannot be undone.`}
         </>
       }
     />

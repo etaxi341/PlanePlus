@@ -1,10 +1,14 @@
 "use client";
 import React, { FC } from "react";
 import { observer } from "mobx-react";
-import { TIssue, TIssueRelationTypes } from "@plane/types";
+// Plane
+import { EIssueServiceType } from "@plane/constants";
+import { TIssue, TIssueServiceType } from "@plane/types";
 // components
 import { RelationIssueListItem } from "@/components/issues/relations";
-// types
+// Plane-web
+import { TIssueRelationTypes } from "@/plane-web/types";
+//
 import { TRelationIssueOperations } from "../issue-detail-widgets/relations/helper";
 
 type Props = {
@@ -16,6 +20,7 @@ type Props = {
   issueOperations: TRelationIssueOperations;
   handleIssueCrudState: (key: "update" | "delete", issueId: string, issue?: TIssue | null) => void;
   disabled?: boolean;
+  issueServiceType?: TIssueServiceType;
 };
 
 export const RelationIssueList: FC<Props> = observer((props) => {
@@ -28,6 +33,7 @@ export const RelationIssueList: FC<Props> = observer((props) => {
     disabled = false,
     issueOperations,
     handleIssueCrudState,
+    issueServiceType = EIssueServiceType.ISSUES,
   } = props;
 
   return (
@@ -45,6 +51,7 @@ export const RelationIssueList: FC<Props> = observer((props) => {
             disabled={disabled}
             handleIssueCrudState={handleIssueCrudState}
             issueOperations={issueOperations}
+            issueServiceType={issueServiceType}
           />
         ))}
     </div>

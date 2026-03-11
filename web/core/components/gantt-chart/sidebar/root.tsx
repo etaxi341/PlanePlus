@@ -21,9 +21,9 @@ type Props = {
   enableSelection: boolean | ((blockId: string) => boolean);
   sidebarToRender: (props: any) => React.ReactNode;
   title: string;
-  getBlockById: (id: string, currentViewData?: ChartDataType | undefined) => IGanttBlock;
   quickAdd?: React.JSX.Element | undefined;
   selectionHelpers: TSelectionHelper;
+  isEpic?: boolean;
 };
 
 export const GanttChartSidebar: React.FC<Props> = observer((props) => {
@@ -33,13 +33,13 @@ export const GanttChartSidebar: React.FC<Props> = observer((props) => {
     enableReorder,
     enableSelection,
     sidebarToRender,
-    getBlockById,
     loadMoreBlocks,
     canLoadMoreBlocks,
     ganttContainerRef,
     title,
     quickAdd,
     selectionHelpers,
+    isEpic = false,
   } = props;
 
   const isGroupSelectionEmpty = selectionHelpers.isGroupSelected(GANTT_SELECT_GROUP) === "empty";
@@ -86,13 +86,13 @@ export const GanttChartSidebar: React.FC<Props> = observer((props) => {
             title,
             blockUpdateHandler,
             blockIds,
-            getBlockById,
             enableReorder,
             enableSelection,
             canLoadMoreBlocks,
             ganttContainerRef,
             loadMoreBlocks,
             selectionHelpers,
+            isEpic,
           })}
       </Row>
       {quickAdd ? quickAdd : null}

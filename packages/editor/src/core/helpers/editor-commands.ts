@@ -7,47 +7,57 @@ import { findTableAncestor } from "@/helpers/common";
 import { InsertImageComponentProps } from "@/extensions";
 
 export const setText = (editor: Editor, range?: Range) => {
-  if (range) editor.chain().focus().deleteRange(range).clearNodes().run();
-  else editor.chain().focus().clearNodes().run();
+  if (range) editor.chain().focus().deleteRange(range).setNode("paragraph").run();
+  else editor.chain().focus().setNode("paragraph").run();
 };
 
 export const toggleHeadingOne = (editor: Editor, range?: Range) => {
   if (range) editor.chain().focus().deleteRange(range).setNode("heading", { level: 1 }).run();
+  // @ts-expect-error tiptap types are incorrect
   else editor.chain().focus().toggleHeading({ level: 1 }).run();
 };
 
 export const toggleHeadingTwo = (editor: Editor, range?: Range) => {
   if (range) editor.chain().focus().deleteRange(range).setNode("heading", { level: 2 }).run();
+  // @ts-expect-error tiptap types are incorrect
   else editor.chain().focus().toggleHeading({ level: 2 }).run();
 };
 
 export const toggleHeadingThree = (editor: Editor, range?: Range) => {
   if (range) editor.chain().focus().deleteRange(range).setNode("heading", { level: 3 }).run();
+  // @ts-expect-error tiptap types are incorrect
   else editor.chain().focus().toggleHeading({ level: 3 }).run();
 };
 
 export const toggleHeadingFour = (editor: Editor, range?: Range) => {
   if (range) editor.chain().focus().deleteRange(range).setNode("heading", { level: 4 }).run();
+  // @ts-expect-error tiptap types are incorrect
   else editor.chain().focus().toggleHeading({ level: 4 }).run();
 };
 
 export const toggleHeadingFive = (editor: Editor, range?: Range) => {
   if (range) editor.chain().focus().deleteRange(range).setNode("heading", { level: 5 }).run();
+  // @ts-expect-error tiptap types are incorrect
   else editor.chain().focus().toggleHeading({ level: 5 }).run();
 };
 
 export const toggleHeadingSix = (editor: Editor, range?: Range) => {
   if (range) editor.chain().focus().deleteRange(range).setNode("heading", { level: 6 }).run();
+  // @ts-expect-error tiptap types are incorrect
   else editor.chain().focus().toggleHeading({ level: 6 }).run();
 };
 
 export const toggleBold = (editor: Editor, range?: Range) => {
+  // @ts-expect-error tiptap types are incorrect
   if (range) editor.chain().focus().deleteRange(range).toggleBold().run();
+  // @ts-expect-error tiptap types are incorrect
   else editor.chain().focus().toggleBold().run();
 };
 
 export const toggleItalic = (editor: Editor, range?: Range) => {
+  // @ts-expect-error tiptap types are incorrect
   if (range) editor.chain().focus().deleteRange(range).toggleItalic().run();
+  // @ts-expect-error tiptap types are incorrect
   else editor.chain().focus().toggleItalic().run();
 };
 
@@ -86,12 +96,16 @@ export const toggleCodeBlock = (editor: Editor, range?: Range) => {
 };
 
 export const toggleOrderedList = (editor: Editor, range?: Range) => {
+  // @ts-expect-error tiptap types are incorrect
   if (range) editor.chain().focus().deleteRange(range).toggleOrderedList().run();
+  // @ts-expect-error tiptap types are incorrect
   else editor.chain().focus().toggleOrderedList().run();
 };
 
 export const toggleBulletList = (editor: Editor, range?: Range) => {
+  // @ts-expect-error tiptap types are incorrect
   if (range) editor.chain().focus().deleteRange(range).toggleBulletList().run();
+  // @ts-expect-error tiptap types are incorrect
   else editor.chain().focus().toggleBulletList().run();
 };
 
@@ -101,7 +115,9 @@ export const toggleTaskList = (editor: Editor, range?: Range) => {
 };
 
 export const toggleStrike = (editor: Editor, range?: Range) => {
+  // @ts-expect-error tiptap types are incorrect
   if (range) editor.chain().focus().deleteRange(range).toggleStrike().run();
+  // @ts-expect-error tiptap types are incorrect
   else editor.chain().focus().toggleStrike().run();
 };
 
@@ -153,4 +169,43 @@ export const unsetLinkEditor = (editor: Editor) => {
 
 export const setLinkEditor = (editor: Editor, url: string) => {
   editor.chain().focus().setLink({ href: url }).run();
+};
+
+export const toggleTextColor = (color: string | undefined, editor: Editor, range?: Range) => {
+  if (color) {
+    if (range) editor.chain().focus().deleteRange(range).setTextColor(color).run();
+    else editor.chain().focus().setTextColor(color).run();
+  } else {
+    if (range) editor.chain().focus().deleteRange(range).unsetTextColor().run();
+    else editor.chain().focus().unsetTextColor().run();
+  }
+};
+
+export const toggleBackgroundColor = (color: string | undefined, editor: Editor, range?: Range) => {
+  if (color) {
+    if (range) {
+      editor.chain().focus().deleteRange(range).setBackgroundColor(color).run();
+    } else {
+      editor.chain().focus().setBackgroundColor(color).run();
+    }
+  } else {
+    if (range) {
+      editor.chain().focus().deleteRange(range).unsetBackgroundColor().run();
+    } else {
+      editor.chain().focus().unsetBackgroundColor().run();
+    }
+  }
+};
+
+export const setTextAlign = (alignment: string, editor: Editor) => {
+  editor.chain().focus().setTextAlign(alignment).run();
+};
+
+export const insertHorizontalRule = (editor: Editor, range?: Range) => {
+  if (range) editor.chain().focus().deleteRange(range).setHorizontalRule().run();
+  else editor.chain().focus().setHorizontalRule().run();
+};
+export const insertCallout = (editor: Editor, range?: Range) => {
+  if (range) editor.chain().focus().deleteRange(range).insertCallout().run();
+  else editor.chain().focus().insertCallout().run();
 };
