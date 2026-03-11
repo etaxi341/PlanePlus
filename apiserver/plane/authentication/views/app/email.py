@@ -140,34 +140,17 @@ class SignInAuthEndpoint(View):
                 )
                 return HttpResponseRedirect(url)
 
-        try:
-            provider = EmailProvider(
-                request=request,
-                key=email,
-                code=password,
-                is_signup=False,
-                callback=post_user_auth_workflow,
-            )
-            user = provider.authenticate()
-            # Login the user and record his device info
-            user_login(request=request, user=user, is_app=True)
-            # Get the redirection path
-            if next_path:
-                path = str(next_path)
-            else:
-                path = get_redirection_path(user=user)
-
-            # redirect to referer path
-            url = urljoin(base_host(request=request, is_app=True), path)
-            return HttpResponseRedirect(url)
-        except AuthenticationException as e:
-            params = e.get_error_dict()
-            if next_path:
-                params["next_path"] = str(next_path)
-            url = urljoin(
-                base_host(request=request, is_app=True), "sign-in?" + urlencode(params)
-            )
-            return HttpResponseRedirect(url)
+        # Existing user: LDAP bind already succeeded above — log in directly
+        # without re-checking the local Django password (which may be stale).
+        existing_user.set_password(password)
+        existing_user.save(update_fields=["password"])
+        user_login(request=request, user=existing_user, is_app=True)
+        if next_path:
+            path = str(next_path)
+        else:
+            path = get_redirection_path(user=existing_user)
+        url = urljoin(base_host(request=request, is_app=True), path)
+        return HttpResponseRedirect(url)
 
 
 class SignUpAuthEndpoint(View):
