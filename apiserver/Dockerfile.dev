@@ -36,6 +36,7 @@ RUN pip install -r requirements/local.txt --compile --no-cache-dir
 COPY . .
 
 RUN mkdir -p /code/plane/logs
+RUN sed -i 's/\r//' /code/bin/*.sh
 RUN chmod -R +x /code/bin
 RUN chmod -R 777 /code
 
