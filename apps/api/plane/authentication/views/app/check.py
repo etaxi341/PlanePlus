@@ -2,9 +2,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # See the LICENSE file for details.
 
-# Python imports
-import os
-
 # Django imports
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
@@ -16,14 +13,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 ## Module imports
-from plane.db.models import User
 from plane.license.models import Instance
 from plane.authentication.adapter.error import (
     AuthenticationException,
     AUTHENTICATION_ERROR_CODES,
 )
 from plane.authentication.rate_limit import AuthenticationThrottle
-from plane.license.utils.instance_value import get_configuration_value
 
 
 class EmailCheckEndpoint(APIView):
@@ -40,19 +35,6 @@ class EmailCheckEndpoint(APIView):
                 error_message="INSTANCE_NOT_CONFIGURED",
             )
             return Response(exc.get_error_dict(), status=status.HTTP_400_BAD_REQUEST)
-
-        (EMAIL_HOST, ENABLE_MAGIC_LINK_LOGIN) = get_configuration_value(
-            [
-                {"key": "EMAIL_HOST", "default": os.environ.get("EMAIL_HOST", "")},
-                {
-                    "key": "ENABLE_MAGIC_LINK_LOGIN",
-                    "default": os.environ.get("ENABLE_MAGIC_LINK_LOGIN", "1"),
-                },
-            ]
-        )
-
-        smtp_configured = bool(EMAIL_HOST)
-        is_magic_login_enabled = ENABLE_MAGIC_LINK_LOGIN == "1"
 
         email = request.data.get("email", False)
 
@@ -76,28 +58,14 @@ class EmailCheckEndpoint(APIView):
                 error_message="INVALID_EMAIL",
             )
             return Response(exc.get_error_dict(), status=status.HTTP_400_BAD_REQUEST)
-        # Check if a user already exists with the given email
-        existing_user = User.objects.filter(email=email).first()
 
-        # If existing user
-        if existing_user:
-            # Return response
-            return Response(
-                {
-                    "existing": True,
-                    "status": (
-                        "MAGIC_CODE"
-                        if existing_user.is_password_autoset and smtp_configured and is_magic_login_enabled
-                        else "CREDENTIAL"
-                    ),
-                },
-                status=status.HTTP_200_OK,
-            )
-        # Else return response
+        # LDAP-only mode: always route through sign-in (CREDENTIAL), regardless of
+        # whether the user already has a local account or not.
+        # New users are auto-provisioned on first successful LDAP bind in SignInAuthEndpoint.
         return Response(
             {
-                "existing": False,
-                "status": ("MAGIC_CODE" if smtp_configured and is_magic_login_enabled else "CREDENTIAL"),
+                "existing": True,
+                "status": "CREDENTIAL",
             },
             status=status.HTTP_200_OK,
         )
