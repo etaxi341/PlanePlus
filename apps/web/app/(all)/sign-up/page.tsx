@@ -4,10 +4,15 @@
  * See the LICENSE file for details.
  */
 
-import { redirect } from "next/navigation";
+import { redirect } from "react-router";
+import type { Route } from "./+types/page";
 
 // Sign-up is disabled — authentication is handled via LDAP.
-// New users are auto-provisioned on first LDAP login.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function clientLoader(_: Route.ClientLoaderArgs) {
+  throw redirect("/");
+}
+
 export default function SignUpPage() {
-  redirect("/");
+  return null;
 }
