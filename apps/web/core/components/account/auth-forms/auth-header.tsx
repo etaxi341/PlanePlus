@@ -87,8 +87,7 @@ export const AuthHeader = observer(function AuthHeader(props: TAuthHeader) {
             {workspace.name}
           </div>
         ),
-        subHeader:
-      subHeader: "Log in to start managing work with your team.",
+        subHeader: "Log in to start managing work with your team.",
       };
     }
 
