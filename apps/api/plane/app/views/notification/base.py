@@ -298,11 +298,8 @@ class UserNotificationPreferenceEndpoint(BaseAPIView):
         serializer = UserNotificationPreferenceSerializer(user_notification_preference)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    # update the object
+    # update the object – preferences are locked; email notifications are always enabled
     def patch(self, request):
         user_notification_preference = UserNotificationPreference.objects.get(user=request.user)
-        serializer = UserNotificationPreferenceSerializer(user_notification_preference, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer = UserNotificationPreferenceSerializer(user_notification_preference)
+        return Response(serializer.data, status=status.HTTP_200_OK)

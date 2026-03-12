@@ -327,26 +327,8 @@ def notifications(
                     if issue_activity.get("field") == "description":
                         continue
 
-                    # Check if the value should be sent or not
-                    send_email = False
-                    if issue_activity.get("field") == "state" and preference.state_change:
-                        send_email = True
-                    elif (
-                        issue_activity.get("field") == "state"
-                        and preference.issue_completed
-                        and State.objects.filter(
-                            project_id=project_id,
-                            pk=issue_activity.get("new_identifier"),
-                            group="completed",
-                        ).exists()
-                    ):
-                        send_email = True
-                    elif issue_activity.get("field") == "comment" and preference.comment:
-                        send_email = True
-                    elif preference.property_change:
-                        send_email = True
-                    else:
-                        send_email = False
+                    # Email notifications are always enabled for all users
+                    send_email = True
 
                     # If activity is of issue comment fetch the comment
                     issue_comment = (
@@ -476,8 +458,8 @@ def notifications(
                             activity=issue_activity,
                         )
 
-                        # check for email notifications
-                        if preference.mention:
+                        # check for email notifications (always enabled)
+                        if True:
                             bulk_email_logs.append(
                                 EmailNotificationLog(
                                     triggered_by_id=actor_id,
@@ -569,7 +551,7 @@ def notifications(
                                 },
                             )
                         )
-                        if preference.mention:
+                        if True:  # email notifications always enabled
                             bulk_email_logs.append(
                                 EmailNotificationLog(
                                     triggered_by_id=actor_id,
@@ -618,7 +600,7 @@ def notifications(
                                 issue_id=issue_id,
                                 activity=issue_activity,
                             )
-                            if preference.mention:
+                            if True:  # email notifications always enabled
                                 bulk_email_logs.append(
                                     EmailNotificationLog(
                                         triggered_by_id=actor_id,

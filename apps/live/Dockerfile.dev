@@ -4,8 +4,7 @@ RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 COPY . .
-RUN corepack enable pnpm && pnpm add -g turbo
-RUN pnpm install
+RUN corepack enable pnpm && pnpm install
 EXPOSE 3003
 
 ENV TURBO_TELEMETRY_DISABLED=1
