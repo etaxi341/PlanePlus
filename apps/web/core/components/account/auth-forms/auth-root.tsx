@@ -22,7 +22,6 @@ import {
 import { useOAuthConfig } from "@/hooks/oauth";
 import { useInstance } from "@/hooks/store/use-instance";
 // local imports
-import { TermsAndConditions } from "../terms-and-conditions";
 import { AuthBanner } from "./auth-banner";
 import { AuthHeader, AuthHeaderBase } from "./auth-header";
 import { AuthFormRoot } from "./form-root";
@@ -49,42 +48,36 @@ export const AuthRoot = observer(function AuthRoot(props: TAuthRoot) {
   // store hooks
   const { config } = useInstance();
   // derived values
-  const oAuthActionText = authMode === EAuthModes.SIGN_UP ? "Sign up" : "Sign in";
+  const oAuthActionText = "Sign in";
   const { isOAuthEnabled, oAuthOptions } = useOAuthConfig(oAuthActionText);
   const isEmailBasedAuthEnabled = config?.is_email_password_enabled || config?.is_magic_login_enabled;
   const noAuthMethodsAvailable = !isOAuthEnabled && !isEmailBasedAuthEnabled;
 
   useEffect(() => {
-    if (!authMode && currentAuthMode) setAuthMode(currentAuthMode);
+    if (!authMode && currentAuthMode) setAuthMode(EAuthModes.SIGN_IN);
   }, [currentAuthMode, authMode]);
 
   useEffect(() => {
     if (error_code && authMode) {
       const errorhandler = authErrorHandler(error_code?.toString() as EAuthenticationErrorCodes);
       if (errorhandler) {
-        // password error handler
-        if ([EAuthenticationErrorCodes.AUTHENTICATION_FAILED_SIGN_UP].includes(errorhandler.code)) {
-          setAuthMode(EAuthModes.SIGN_UP);
-          setAuthStep(EAuthSteps.PASSWORD);
-        }
-        if ([EAuthenticationErrorCodes.AUTHENTICATION_FAILED_SIGN_IN].includes(errorhandler.code)) {
+        // Always treat auth failures as sign-in (no sign-up allowed)
+        if (
+          [
+            EAuthenticationErrorCodes.AUTHENTICATION_FAILED_SIGN_UP,
+            EAuthenticationErrorCodes.AUTHENTICATION_FAILED_SIGN_IN,
+          ].includes(errorhandler.code)
+        ) {
           setAuthMode(EAuthModes.SIGN_IN);
           setAuthStep(EAuthSteps.PASSWORD);
         }
-        // magic_code error handler
+        // magic_code error handler — always sign-in
         if (
           [
             EAuthenticationErrorCodes.INVALID_MAGIC_CODE_SIGN_UP,
             EAuthenticationErrorCodes.INVALID_EMAIL_MAGIC_SIGN_UP,
             EAuthenticationErrorCodes.EXPIRED_MAGIC_CODE_SIGN_UP,
             EAuthenticationErrorCodes.EMAIL_CODE_ATTEMPT_EXHAUSTED_SIGN_UP,
-          ].includes(errorhandler.code)
-        ) {
-          setAuthMode(EAuthModes.SIGN_UP);
-          setAuthStep(EAuthSteps.UNIQUE_CODE);
-        }
-        if (
-          [
             EAuthenticationErrorCodes.INVALID_MAGIC_CODE_SIGN_IN,
             EAuthenticationErrorCodes.INVALID_EMAIL_MAGIC_SIGN_IN,
             EAuthenticationErrorCodes.EXPIRED_MAGIC_CODE_SIGN_IN,
@@ -122,7 +115,7 @@ export const AuthRoot = observer(function AuthRoot(props: TAuthRoot) {
         workspaceSlug={workspaceSlug?.toString() || undefined}
         invitationId={invitation_id?.toString() || undefined}
         invitationEmail={email || undefined}
-        authMode={authMode}
+        authMode={EAuthModes.SIGN_IN}
         currentAuthStep={authStep}
       />
       {isOAuthEnabled && (
@@ -135,7 +128,7 @@ export const AuthRoot = observer(function AuthRoot(props: TAuthRoot) {
       {isEmailBasedAuthEnabled && (
         <AuthFormRoot
           authStep={authStep}
-          authMode={authMode}
+          authMode={EAuthModes.SIGN_IN}
           email={email}
           setEmail={(email) => setEmail(email)}
           setAuthMode={(authMode) => setAuthMode(authMode)}
@@ -144,7 +137,6 @@ export const AuthRoot = observer(function AuthRoot(props: TAuthRoot) {
           currentAuthMode={currentAuthMode}
         />
       )}
-      <TermsAndConditions authType={authMode} />
     </AuthContainer>
   );
 });
