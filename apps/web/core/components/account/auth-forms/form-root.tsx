@@ -56,22 +56,11 @@ export const AuthFormRoot = observer(function AuthFormRoot(props: TAuthFormRoot)
     await authService
       .emailCheck(data)
       .then(async (response) => {
-        if (response.existing) {
-          if (currentAuthMode === EAuthModes.SIGN_UP) setAuthMode(EAuthModes.SIGN_IN);
-          if (response.status === "MAGIC_CODE") {
-            setAuthStep(EAuthSteps.UNIQUE_CODE);
-            generateEmailUniqueCode(data.email);
-          } else if (response.status === "CREDENTIAL") {
-            setAuthStep(EAuthSteps.PASSWORD);
-          }
-        } else {
-          if (currentAuthMode === EAuthModes.SIGN_IN) setAuthMode(EAuthModes.SIGN_UP);
-          if (response.status === "MAGIC_CODE") {
-            setAuthStep(EAuthSteps.UNIQUE_CODE);
-            generateEmailUniqueCode(data.email);
-          } else if (response.status === "CREDENTIAL") {
-            setAuthStep(EAuthSteps.PASSWORD);
-          }
+        if (response.status === "MAGIC_CODE") {
+          setAuthStep(EAuthSteps.UNIQUE_CODE);
+          generateEmailUniqueCode(data.email);
+        } else if (response.status === "CREDENTIAL") {
+          setAuthStep(EAuthSteps.PASSWORD);
         }
         setIsExistingEmail(response.existing);
       })
@@ -86,7 +75,7 @@ export const AuthFormRoot = observer(function AuthFormRoot(props: TAuthFormRoot)
     setErrorInfo(undefined);
     setEmail("");
     setAuthStep(EAuthSteps.EMAIL);
-    router.push(currentAuthMode === EAuthModes.SIGN_IN ? `/` : "/sign-up");
+    router.push("/");
   };
 
   // generating the unique code

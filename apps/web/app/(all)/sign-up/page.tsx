@@ -4,22 +4,10 @@
  * See the LICENSE file for details.
  */
 
-// components
-import { AuthBase } from "@/components/auth-screens/auth-base";
-// helpers
-import { EAuthModes, EPageTypes } from "@/helpers/authentication.helper";
-// assets
-import DefaultLayout from "@/layouts/default-layout";
-import { AuthenticationWrapper } from "@/lib/wrappers/authentication-wrapper";
+import { redirect } from "next/navigation";
 
-function SignUpPage() {
-  return (
-    <DefaultLayout>
-      <AuthenticationWrapper pageType={EPageTypes.NON_AUTHENTICATED}>
-        <AuthBase authType={EAuthModes.SIGN_UP} />
-      </AuthenticationWrapper>
-    </DefaultLayout>
-  );
+// Sign-up is disabled — authentication is handled via LDAP.
+// New users are auto-provisioned on first LDAP login.
+export default function SignUpPage() {
+  redirect("/");
 }
-
-export default SignUpPage;
