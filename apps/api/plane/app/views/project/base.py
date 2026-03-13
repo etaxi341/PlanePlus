@@ -108,8 +108,11 @@ class ProjectViewSet(BaseViewSet):
             role=ROLE.GUEST.value,
         ).exists():
             projects = projects.filter(
-                project_projectmember__member=self.request.user,
-                project_projectmember__is_active=True,
+                Q(
+                    project_projectmember__member=self.request.user,
+                    project_projectmember__is_active=True,
+                )
+                | Q(network=2)
             )
 
         if WorkspaceMember.objects.filter(
@@ -198,8 +201,11 @@ class ProjectViewSet(BaseViewSet):
             role=ROLE.GUEST.value,
         ).exists():
             projects = projects.filter(
-                project_projectmember__member=self.request.user,
-                project_projectmember__is_active=True,
+                Q(
+                    project_projectmember__member=self.request.user,
+                    project_projectmember__is_active=True,
+                )
+                | Q(network=2)
             )
 
         if WorkspaceMember.objects.filter(
