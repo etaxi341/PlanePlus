@@ -6,8 +6,12 @@
 
 import type { FC } from "react";
 import React from "react";
+import { observer } from "mobx-react";
 // plane imports
+import { EUserPermissions, EUserPermissionsLevel } from "@plane/constants";
 import type { TIssueServiceType, TWorkItemWidgets } from "@plane/types";
+// hooks
+import { useUserPermissions } from "@/hooks/store/user";
 // local imports
 import { IssueDetailWidgetActionButtons } from "./action-buttons";
 import { IssueDetailWidgetCollapsibles } from "./issue-detail-widget-collapsibles";
@@ -23,7 +27,7 @@ type Props = {
   hideWidgets?: TWorkItemWidgets[];
 };
 
-export function IssueDetailWidgets(props: Props) {
+export const IssueDetailWidgets = observer(function IssueDetailWidgets(props: Props) {
   const {
     workspaceSlug,
     projectId,
@@ -33,6 +37,16 @@ export function IssueDetailWidgets(props: Props) {
     issueServiceType,
     hideWidgets,
   } = props;
+  // hooks
+  const { allowPermissions } = useUserPermissions();
+  // Guests are allowed to add attachments even if they can't edit other issue fields
+  const canAddAttachment = allowPermissions(
+    [EUserPermissions.ADMIN, EUserPermissions.MEMBER, EUserPermissions.GUEST],
+    EUserPermissionsLevel.PROJECT,
+    workspaceSlug,
+    projectId
+  );
+  const attachmentDisabled = !canAddAttachment;
 
   return (
     <>
@@ -42,6 +56,7 @@ export function IssueDetailWidgets(props: Props) {
           projectId={projectId}
           issueId={issueId}
           disabled={disabled}
+          attachmentDisabled={attachmentDisabled}
           issueServiceType={issueServiceType}
           hideWidgets={hideWidgets}
         />
@@ -50,6 +65,7 @@ export function IssueDetailWidgets(props: Props) {
           projectId={projectId}
           issueId={issueId}
           disabled={disabled}
+          attachmentDisabled={attachmentDisabled}
           issueServiceType={issueServiceType}
           hideWidgets={hideWidgets}
         />
@@ -65,4 +81,4 @@ export function IssueDetailWidgets(props: Props) {
       )}
     </>
   );
-}
+});

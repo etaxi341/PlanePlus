@@ -25,12 +25,21 @@ type Props = {
   projectId: string;
   issueId: string;
   disabled: boolean;
+  attachmentDisabled?: boolean;
   issueServiceType: TIssueServiceType;
   hideWidgets?: TWorkItemWidgets[];
 };
 
 export function IssueDetailWidgetActionButtons(props: Props) {
-  const { workspaceSlug, projectId, issueId, disabled, issueServiceType, hideWidgets } = props;
+  const {
+    workspaceSlug,
+    projectId,
+    issueId,
+    disabled,
+    attachmentDisabled = disabled,
+    issueServiceType,
+    hideWidgets,
+  } = props;
   // translation
   const { t } = useTranslation();
 
@@ -86,10 +95,10 @@ export function IssueDetailWidgetActionButtons(props: Props) {
             <IssueDetailWidgetButton
               title={t("common.attach")}
               icon={<Paperclip className="h-3.5 w-3.5 flex-shrink-0" strokeWidth={2} />}
-              disabled={disabled}
+              disabled={attachmentDisabled}
             />
           }
-          disabled={disabled}
+          disabled={attachmentDisabled}
           issueServiceType={issueServiceType}
         />
       )}
