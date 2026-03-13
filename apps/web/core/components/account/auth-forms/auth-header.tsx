@@ -38,6 +38,10 @@ const Titles = {
       header: "Work in all dimensions.",
       subHeader: "Sign in to your Plane account.",
     },
+    [EAuthSteps.TWO_FACTOR_CODE]: {
+      header: "Zwei-Faktor-Authentifizierung",
+      subHeader: "Geben Sie den Code aus Ihrer Authenticator-App ein.",
+    },
   },
   [EAuthModes.SIGN_UP]: {
     [EAuthSteps.EMAIL]: {
@@ -51,6 +55,10 @@ const Titles = {
     [EAuthSteps.UNIQUE_CODE]: {
       header: "Work in all dimensions.",
       subHeader: "Sign in to your Plane account.",
+    },
+    [EAuthSteps.TWO_FACTOR_CODE]: {
+      header: "Zwei-Faktor-Authentifizierung",
+      subHeader: "Geben Sie den Code aus Ihrer Authenticator-App ein.",
     },
   },
 };
@@ -74,11 +82,11 @@ export const AuthHeader = observer(function AuthHeader(props: TAuthHeader) {
   const getHeaderSubHeader = (
     step: EAuthSteps,
     mode: EAuthModes,
-    invitation: IWorkspaceMemberInvitation | undefined,
+    invitationData: IWorkspaceMemberInvitation | undefined,
     email: string | undefined
   ) => {
-    if (invitation && email && invitation.email === email && invitation.workspace) {
-      const workspace = invitation.workspace;
+    if (invitationData && email && invitationData.email === email && invitationData.workspace) {
+      const workspace = invitationData.workspace;
       return {
         header: (
           <div className="relative inline-flex items-center gap-2">

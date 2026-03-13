@@ -11,7 +11,7 @@ import { EAuthModes, EAuthSteps } from "@plane/constants";
 import type { IEmailCheckData } from "@plane/types";
 // helpers
 import type { TAuthErrorInfo } from "@/helpers/authentication.helper";
-import { authErrorHandler } from "@/helpers/authentication.helper";
+import { authErrorHandler, EErrorAlertType } from "@/helpers/authentication.helper";
 // hooks
 import { useInstance } from "@/hooks/store/use-instance";
 import { useAppRouter } from "@/hooks/use-app-router";
@@ -20,6 +20,7 @@ import { AuthService } from "@/services/auth.service";
 // local components
 import { AuthEmailForm } from "./email";
 import { AuthPasswordForm } from "./password";
+import { AuthTwoFactorForm } from "./two-factor";
 import { AuthUniqueCodeForm } from "./unique-code";
 
 type TAuthFormRoot = {
@@ -44,6 +45,8 @@ export const AuthFormRoot = observer(function AuthFormRoot(props: TAuthFormRoot)
   const nextPath = searchParams.get("next_path");
   // states
   const [isExistingEmail, setIsExistingEmail] = useState(false);
+  // 2FA state — store the password so we can resend it with the 2FA code
+  const [twoFactorPassword, setTwoFactorPassword] = useState("");
   // hooks
   const { config } = useInstance();
 
@@ -53,35 +56,58 @@ export const AuthFormRoot = observer(function AuthFormRoot(props: TAuthFormRoot)
   const handleEmailVerification = async (data: IEmailCheckData) => {
     setEmail(data.email);
     setErrorInfo(undefined);
-    await authService
-      .emailCheck(data)
-      .then(async (response) => {
-        if (response.status === "MAGIC_CODE") {
-          setAuthStep(EAuthSteps.UNIQUE_CODE);
-          generateEmailUniqueCode(data.email);
-        } else if (response.status === "CREDENTIAL") {
-          setAuthStep(EAuthSteps.PASSWORD);
-        }
-        setIsExistingEmail(response.existing);
-      })
-      .catch((error) => {
-        const errorhandler = authErrorHandler(error?.error_code?.toString(), data?.email || undefined);
-        if (errorhandler?.type) setErrorInfo(errorhandler);
-      });
+    try {
+      const response = await authService.emailCheck(data);
+      if (response.status === "MAGIC_CODE") {
+        setAuthStep(EAuthSteps.UNIQUE_CODE);
+        generateEmailUniqueCode(data.email);
+      } else if (response.status === "CREDENTIAL") {
+        setAuthStep(EAuthSteps.PASSWORD);
+      }
+      setIsExistingEmail(response.existing);
+    } catch (error: any) {
+      const errorhandler = authErrorHandler(error?.error_code?.toString(), data?.email || undefined);
+      if (errorhandler?.type) setErrorInfo(errorhandler);
+    }
   };
 
   const handleEmailClear = () => {
     setAuthMode(currentAuthMode);
     setErrorInfo(undefined);
     setEmail("");
+    setTwoFactorPassword("");
     setAuthStep(EAuthSteps.EMAIL);
     router.push("/");
   };
 
+  // Handle successful login — redirect to the target path
+  const handleLoginSuccess = (redirectPath: string) => {
+    const targetPath = nextPath || redirectPath;
+    window.location.href = targetPath;
+  };
+
+  // Handle 2FA required — switch to 2FA step
+  const handleTwoFactorRequired = (userEmail: string, password: string) => {
+    setEmail(userEmail);
+    setTwoFactorPassword(password);
+    setErrorInfo(undefined);
+    setAuthStep(EAuthSteps.TWO_FACTOR_CODE);
+  };
+
+  // Handle login error — show error banner
+  const handleLoginError = (errorMessage: string) => {
+    setErrorInfo({
+      type: EErrorAlertType.BANNER_ALERT,
+      code: "AUTHENTICATION_FAILED_SIGN_IN" as any,
+      title: "Authentication failed",
+      message: errorMessage,
+    });
+  };
+
   // generating the unique code
-  const generateEmailUniqueCode = async (email: string): Promise<{ code: string } | undefined> => {
+  const generateEmailUniqueCode = async (emailAddress: string): Promise<{ code: string } | undefined> => {
     if (!isSMTPConfigured) return;
-    const payload = { email: email };
+    const payload = { email: emailAddress };
     return await authService
       .generateUniqueCode(payload)
       .then(() => ({ code: "" }))
@@ -119,6 +145,20 @@ export const AuthFormRoot = observer(function AuthFormRoot(props: TAuthFormRoot)
           setAuthStep(step);
         }}
         nextPath={nextPath || undefined}
+        onLoginSuccess={handleLoginSuccess}
+        onTwoFactorRequired={handleTwoFactorRequired}
+        onError={handleLoginError}
+      />
+    );
+  }
+  if (authStep === EAuthSteps.TWO_FACTOR_CODE) {
+    return (
+      <AuthTwoFactorForm
+        email={email}
+        password={twoFactorPassword}
+        handleEmailClear={handleEmailClear}
+        onLoginSuccess={handleLoginSuccess}
+        onError={handleLoginError}
       />
     );
   }

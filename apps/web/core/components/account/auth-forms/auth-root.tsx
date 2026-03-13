@@ -121,7 +121,7 @@ export const AuthRoot = observer(function AuthRoot(props: TAuthRoot) {
       {isOAuthEnabled && (
         <OAuthOptions
           options={oAuthOptions}
-          compact={authStep === EAuthSteps.PASSWORD}
+          compact={authStep === EAuthSteps.PASSWORD || authStep === EAuthSteps.TWO_FACTOR_CODE}
           showDivider={isEmailBasedAuthEnabled}
         />
       )}
@@ -130,10 +130,10 @@ export const AuthRoot = observer(function AuthRoot(props: TAuthRoot) {
           authStep={authStep}
           authMode={EAuthModes.SIGN_IN}
           email={email}
-          setEmail={(email) => setEmail(email)}
-          setAuthMode={(authMode) => setAuthMode(authMode)}
-          setAuthStep={(authStep) => setAuthStep(authStep)}
-          setErrorInfo={(errorInfo) => setErrorInfo(errorInfo)}
+          setEmail={(e) => setEmail(e)}
+          setAuthMode={(mode) => setAuthMode(mode)}
+          setAuthStep={(step) => setAuthStep(step)}
+          setErrorInfo={(info) => setErrorInfo(info)}
           currentAuthMode={currentAuthMode}
         />
       )}

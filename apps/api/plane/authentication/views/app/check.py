@@ -59,9 +59,9 @@ class EmailCheckEndpoint(APIView):
             )
             return Response(exc.get_error_dict(), status=status.HTTP_400_BAD_REQUEST)
 
-        # LDAP-only mode: always route through sign-in (CREDENTIAL), regardless of
+        # Always route through sign-in (CREDENTIAL), regardless of
         # whether the user already has a local account or not.
-        # New users are auto-provisioned on first successful LDAP bind in SignInAuthEndpoint.
+        # New users are auto-provisioned on first successful login via SignInAuthEndpoint.
         return Response(
             {
                 "existing": True,

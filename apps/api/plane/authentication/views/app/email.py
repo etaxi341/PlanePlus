@@ -3,14 +3,20 @@
 # See the LICENSE file for details.
 
 # Python imports
-import ldap
 import os
+import requests as http_requests
 
 # Django imports
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.http import HttpResponseRedirect
 from django.views import View
+
+# Third party imports
+from rest_framework import status
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 # Module imports
 from plane.authentication.provider.credentials.email import EmailProvider
@@ -24,96 +30,169 @@ from plane.authentication.adapter.error import (
     AuthenticationException,
     AUTHENTICATION_ERROR_CODES,
 )
+from plane.authentication.rate_limit import AuthenticationThrottle
 from plane.utils.path_validator import get_safe_redirect_url
 
+# SWG Auth API base URL
+SWG_AUTH_API = "https://services.swg.de/api/Auth"
 
-class SignInAuthEndpoint(View):
+
+class SignInAuthEndpoint(APIView):
+    """
+    JSON-based sign-in endpoint that authenticates against the SWG internal
+    auth service (https://services.swg.de/api/Auth/Login).
+
+    Accepts JSON body:
+      - email (string, required) — used as UPN
+      - password (string, required)
+      - two_factor_code (string, optional)
+
+    Returns JSON with authentication result and 2FA status.
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = [AuthenticationThrottle]
+
     def post(self, request):
-        next_path = request.POST.get("next_path")
         # Check instance configuration
         instance = Instance.objects.first()
         if instance is None or not instance.is_setup_done:
-            # Redirection params
-            exc = AuthenticationException(
-                error_code=AUTHENTICATION_ERROR_CODES["INSTANCE_NOT_CONFIGURED"],
-                error_message="INSTANCE_NOT_CONFIGURED",
+            return Response(
+                {
+                    "error_code": "INSTANCE_NOT_CONFIGURED",
+                    "error_message": "Instance not configured. Please contact your administrator.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
-            params = exc.get_error_dict()
-            # Base URL join
-            url = get_safe_redirect_url(
-                base_url=base_host(request=request, is_app=True),
-                next_path=next_path,
-                params=params,
-            )
-            return HttpResponseRedirect(url)
 
-        # set the referer as session to redirect after login
-        email = request.POST.get("email", False)
-        password = request.POST.get("password", False)
+        email = request.data.get("email", "").strip().lower()
+        password = request.data.get("password", "")
+        two_factor_code = request.data.get("two_factor_code", "")
 
-        ## Raise exception if any of the above are missing
+        # Validate required fields
         if not email or not password:
-            # Redirection params
-            exc = AuthenticationException(
-                error_code=AUTHENTICATION_ERROR_CODES["REQUIRED_EMAIL_PASSWORD_SIGN_IN"],
-                error_message="REQUIRED_EMAIL_PASSWORD_SIGN_IN",
-                payload={"email": str(email)},
+            return Response(
+                {
+                    "error_code": "REQUIRED_EMAIL_PASSWORD_SIGN_IN",
+                    "error_message": "Email and password are required.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
-            params = exc.get_error_dict()
-            # Next path
-            url = get_safe_redirect_url(
-                base_url=base_host(request=request, is_app=True),
-                next_path=next_path,
-                params=params,
-            )
-            return HttpResponseRedirect(url)
 
-        # Validate email
-        email = email.strip().lower()
+        # Validate email format
         try:
             validate_email(email)
         except ValidationError:
-            exc = AuthenticationException(
-                error_code=AUTHENTICATION_ERROR_CODES["INVALID_EMAIL_SIGN_IN"],
-                error_message="INVALID_EMAIL_SIGN_IN",
-                payload={"email": str(email)},
+            return Response(
+                {
+                    "error_code": "INVALID_EMAIL_SIGN_IN",
+                    "error_message": "Invalid email address.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
-            params = exc.get_error_dict()
-            url = get_safe_redirect_url(
-                base_url=base_host(request=request, is_app=True),
-                next_path=next_path,
-                params=params,
-            )
-            return HttpResponseRedirect(url)
 
-        # LDAP Authentication
-        conn = ldap.initialize(os.environ.get('AUTH_LDAP_SERVER_URI'))
+        # Build the payload for SWG Auth API
+        login_payload = {
+            "UPN": email,
+            "Password": password,
+        }
+        if two_factor_code:
+            login_payload["TwoFactorCode"] = two_factor_code
 
-        # Attempt binding to the LDAP server with the given credentials
+        # Call SWG Auth API
         try:
-            conn.simple_bind_s(email, password)
-        except ldap.INVALID_CREDENTIALS:
-            params = {
-                "error_code": 5065,
-                "error_message": "AUTHENTICATION_FAILED_SIGN_IN",
-                "email": email,
-            }
-            url = get_safe_redirect_url(
-                base_url=base_host(request=request, is_app=True),
-                next_path=next_path,
-                params=params,
+            swg_response = http_requests.post(
+                f"{SWG_AUTH_API}/Login",
+                json=login_payload,
+                headers={"Content-Type": "application/json"},
+                timeout=15,
             )
-            return HttpResponseRedirect(url)
+        except http_requests.RequestException:
+            return Response(
+                {
+                    "error_code": "AUTH_SERVICE_UNAVAILABLE",
+                    "error_message": "Authentication service is currently unavailable. Please try again later.",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
+        try:
+            swg_data = swg_response.json()
+        except ValueError:
+            return Response(
+                {
+                    "error_code": "AUTH_SERVICE_ERROR",
+                    "error_message": "Unexpected response from authentication service.",
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        # Check if login succeeded
+        if swg_data.get("Success") is True and swg_data.get("Token"):
+            # Authentication successful — provision or login the user
+            return self._handle_successful_login(request, email, password, swg_data)
+
+        # Login failed — check 2FA status and error codes
+        two_factor_settings = swg_data.get("twoFactorSettings") or swg_data.get("TwoFactorSettings") or {}
+        error_code_swg = swg_data.get("ErrorCode") or swg_data.get("errorCode") or ""
+
+        # 2FA: User needs to enable 2FA first (NeedsToEnableTwoFactorCode)
+        needs_enable_2fa = two_factor_settings.get("NeedsToEnableTwoFactorCode", False)
+        if needs_enable_2fa:
+            return Response(
+                {
+                    "error_code": "NEEDS_TWO_FACTOR_SETUP",
+                    "error_message": "Bitte richten Sie zuerst die Zwei-Faktor-Authentifizierung (2FA) ein, bevor Sie sich anmelden können.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # 2FA: Code is missing or wrong (MissingTwoFactorCode)
+        missing_2fa = two_factor_settings.get("MissingTwoFactorCode", False)
+        if missing_2fa:
+            return Response(
+                {
+                    "error_code": "MISSING_TWO_FACTOR_CODE",
+                    "error_message": "Two-factor authentication code required.",
+                    "requires_two_factor": True,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # Map SWG error codes to our error responses
+        error_map = {
+            "WrongUsername": ("WRONG_USERNAME", "User not found. Please check your email address."),
+            "WrongPassword": ("WRONG_PASSWORD", "Incorrect password. Please try again."),
+            "TwoFactorCodeWrong": ("TWO_FACTOR_CODE_WRONG", "Invalid two-factor code. Please try again."),
+            "NoPermission": ("NO_PERMISSION", "You do not have permission to access this application."),
+        }
+
+        if error_code_swg in error_map:
+            code, message = error_map[error_code_swg]
+            return Response(
+                {"error_code": code, "error_message": message},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # Fallback for unknown errors
+        return Response(
+            {
+                "error_code": "AUTHENTICATION_FAILED_SIGN_IN",
+                "error_message": "Authentication failed. Please try again.",
+            },
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    def _handle_successful_login(self, request, email, password, swg_data):
+        """Handle successful SWG authentication — provision or log in the user."""
         # Correct email domain if needed
-        allowed_domain = os.environ.get('ALLOWED_EMAIL_DOMAIN')
-        if allowed_domain and email.split('@')[1] != allowed_domain:
-            email = email.split('@')[0] + '@' + allowed_domain
+        allowed_domain = os.environ.get("ALLOWED_EMAIL_DOMAIN")
+        if allowed_domain and "@" in email and email.split("@")[1] != allowed_domain:
+            email = email.split("@")[0] + "@" + allowed_domain
 
         existing_user = User.objects.filter(email=email).first()
 
         if not existing_user:
-            # Auto-signup new LDAP users
+            # Auto-provision new users on first successful login
             try:
                 provider = EmailProvider(
                     request=request,
@@ -124,46 +203,38 @@ class SignInAuthEndpoint(View):
                 )
                 user = provider.authenticate()
                 user_login(request=request, user=user, is_app=True)
-                if next_path:
-                    path = next_path
-                else:
-                    path = get_redirection_path(user=user)
-                url = get_safe_redirect_url(
-                    base_url=base_host(request=request, is_app=True),
-                    next_path=path,
-                    params={},
+                path = get_redirection_path(user=user)
+                return Response(
+                    {
+                        "success": True,
+                        "redirect_path": path,
+                    },
+                    status=status.HTTP_200_OK,
                 )
-                return HttpResponseRedirect(url)
             except AuthenticationException as e:
-                params = e.get_error_dict()
-                url = get_safe_redirect_url(
-                    base_url=base_host(request=request, is_app=True),
-                    next_path=next_path,
-                    params=params,
+                return Response(
+                    e.get_error_dict(),
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-                return HttpResponseRedirect(url)
-
-        # Existing user: LDAP bind already succeeded above — log in directly
-        # without re-checking the local Django password (which may be stale).
-        existing_user.set_password(password)
-        existing_user.save(update_fields=["password"])
-        user_login(request=request, user=existing_user, is_app=True)
-        if next_path:
-            path = next_path
         else:
+            # Existing user — sync password and log in
+            existing_user.set_password(password)
+            existing_user.save(update_fields=["password"])
+            user_login(request=request, user=existing_user, is_app=True)
             path = get_redirection_path(user=existing_user)
-        url = get_safe_redirect_url(
-            base_url=base_host(request=request, is_app=True),
-            next_path=path,
-            params={},
-        )
-        return HttpResponseRedirect(url)
+            return Response(
+                {
+                    "success": True,
+                    "redirect_path": path,
+                },
+                status=status.HTTP_200_OK,
+            )
 
 
 class SignUpAuthEndpoint(View):
     def post(self, request):
-        # Direct sign-up is disabled — authentication is handled via LDAP.
-        # New users are auto-provisioned on first LDAP login via SignInAuthEndpoint.
+        # Direct sign-up is disabled — authentication is handled via SWG Auth.
+        # New users are auto-provisioned on first login via SignInAuthEndpoint.
         next_path = request.POST.get("next_path")
         params = {"error_code": 5065, "error_message": "AUTHENTICATION_FAILED_SIGN_IN"}
         url = get_safe_redirect_url(
@@ -172,4 +243,3 @@ class SignUpAuthEndpoint(View):
             params=params,
         )
         return HttpResponseRedirect(url)
-

@@ -26,6 +26,7 @@ export enum EAuthSteps {
   EMAIL = "EMAIL",
   PASSWORD = "PASSWORD",
   UNIQUE_CODE = "UNIQUE_CODE",
+  TWO_FACTOR_CODE = "TWO_FACTOR_CODE",
 }
 
 export enum EErrorAlertType {

@@ -12,9 +12,8 @@ from plane.utils.ip_address import get_client_ip
 
 
 def user_login(request, user, is_app=False, is_admin=False, is_space=False):
-    # When multiple authentication backends are configured (e.g. LDAP + ModelBackend),
-    # Django requires an explicit backend. For email/password and admin flows we
-    # always use the standard ModelBackend.
+    # Django requires an explicit backend when multiple are configured.
+    # We always use the standard ModelBackend.
     if not hasattr(user, "backend"):
         user.backend = "django.contrib.auth.backends.ModelBackend"
     login(request=request, user=user)

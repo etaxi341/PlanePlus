@@ -4,22 +4,19 @@
  * See the LICENSE file for details.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { observer } from "mobx-react";
-import Link from "next/link";
 // icons
 import { Eye, EyeOff, XCircle } from "lucide-react";
 // plane imports
-import { API_BASE_URL, AUTH_TRACKER_ELEMENTS } from "@plane/constants";
 import { useTranslation } from "@plane/i18n";
 import { Button } from "@plane/propel/button";
 import { Input, Spinner } from "@plane/ui";
-// components
-import { ForgotPasswordPopover } from "@/components/account/auth-forms/forgot-password-popover";
 // helpers
 import { EAuthModes, EAuthSteps } from "@/helpers/authentication.helper";
 // services
 import { AuthService } from "@/services/auth.service";
+import type { TLoginResponse } from "@/services/auth.service";
 
 type Props = {
   email: string;
@@ -28,6 +25,9 @@ type Props = {
   handleEmailClear: () => void;
   handleAuthStep: (step: EAuthSteps) => void;
   nextPath: string | undefined;
+  onLoginSuccess: (redirectPath: string) => void;
+  onTwoFactorRequired: (email: string, password: string) => void;
+  onError: (errorMessage: string) => void;
 };
 
 type TPasswordFormValues = {
@@ -43,13 +43,10 @@ const defaultValues: TPasswordFormValues = {
 const authService = new AuthService();
 
 export const AuthPasswordForm = observer(function AuthPasswordForm(props: Props) {
-  const { email, isSMTPConfigured, handleAuthStep, handleEmailClear, nextPath } = props;
+  const { email, handleEmailClear, onLoginSuccess, onTwoFactorRequired, onError } = props;
   // plane imports
   const { t } = useTranslation();
-  // ref
-  const formRef = useRef<HTMLFormElement>(null);
   // states
-  const [csrfPromise, setCsrfPromise] = useState<Promise<{ csrf_token: string }> | undefined>(undefined);
   const [passwordFormData, setPasswordFormData] = useState<TPasswordFormValues>({ ...defaultValues, email });
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -57,46 +54,44 @@ export const AuthPasswordForm = observer(function AuthPasswordForm(props: Props)
   const handleFormChange = (key: keyof TPasswordFormValues, value: string) =>
     setPasswordFormData((prev) => ({ ...prev, [key]: value }));
 
-  useEffect(() => {
-    if (csrfPromise === undefined) {
-      const promise = authService.requestCSRFToken();
-      setCsrfPromise(promise);
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isSubmitting || !passwordFormData.password) return;
+
+    setIsSubmitting(true);
+
+    try {
+      const response: TLoginResponse = await authService.login({
+        email: passwordFormData.email,
+        password: passwordFormData.password,
+      });
+
+      if (response.success && response.redirect_path) {
+        // Successful login — redirect
+        onLoginSuccess(response.redirect_path);
+        return;
+      }
+
+      if (response.requires_two_factor) {
+        // 2FA code needed — switch to 2FA step
+        onTwoFactorRequired(passwordFormData.email, passwordFormData.password);
+        return;
+      }
+
+      // Should not reach here normally, but handle gracefully
+      onError(response.error_message || "Authentication failed. Please try again.");
+    } catch (error: any) {
+      const errorMessage = error?.error_message || "Authentication failed. Please try again.";
+      onError(errorMessage);
+    } finally {
+      setIsSubmitting(false);
     }
-  }, [csrfPromise]);
-
-  const redirectToUniqueCodeSignIn = async () => {
-    handleAuthStep(EAuthSteps.UNIQUE_CODE);
   };
 
-  const isButtonDisabled = !isSubmitting && !!passwordFormData.password ? false : true;
-
-  const handleCSRFToken = async () => {
-    if (!formRef || !formRef.current) return;
-    const token = await csrfPromise;
-    if (!token?.csrf_token) return;
-    const csrfElement = formRef.current.querySelector("input[name=csrfmiddlewaretoken]");
-    csrfElement?.setAttribute("value", token?.csrf_token);
-  };
+  const isButtonDisabled = !(!isSubmitting && !!passwordFormData.password);
 
   return (
-    <form
-      ref={formRef}
-      className="space-y-4"
-      method="POST"
-      action={`${API_BASE_URL}/auth/sign-in/`}
-      onSubmit={async (event) => {
-        event.preventDefault();
-        await handleCSRFToken();
-        setIsSubmitting(true);
-        if (formRef.current) formRef.current.submit();
-      }}
-      onError={() => {
-        setIsSubmitting(false);
-      }}
-    >
-      <input type="hidden" name="csrfmiddlewaretoken" />
-      <input type="hidden" value={passwordFormData.email} name="email" />
-      {nextPath && <input type="hidden" value={nextPath} name="next_path" />}
+    <form className="space-y-4" onSubmit={handleSubmit}>
       <div className="space-y-1">
         <label htmlFor="email" className="text-13 font-medium text-tertiary">
           {t("auth.common.email.label")}
@@ -139,7 +134,6 @@ export const AuthPasswordForm = observer(function AuthPasswordForm(props: Props)
             placeholder={t("auth.common.password.placeholder")}
             className="h-10 w-full border border-strong !bg-surface-1 pr-12 disable-autofill-style placeholder:text-placeholder"
             autoComplete="off"
-            autoFocus
           />
           <button
             type="button"
@@ -156,43 +150,12 @@ export const AuthPasswordForm = observer(function AuthPasswordForm(props: Props)
             )}
           </button>
         </div>
-        <div className="w-full">
-          {isSMTPConfigured ? (
-            <Link
-              data-ph-element={AUTH_TRACKER_ELEMENTS.FORGOT_PASSWORD_FROM_SIGNIN}
-              href={`/accounts/forgot-password?email=${encodeURIComponent(email)}`}
-              className="text-11 font-medium text-accent-primary"
-            >
-              {t("auth.common.forgot_password")}
-            </Link>
-          ) : (
-            <ForgotPasswordPopover />
-          )}
-        </div>
       </div>
 
       <div className="space-y-2.5">
         <Button type="submit" variant="primary" className="w-full" size="xl" disabled={isButtonDisabled}>
-          {isSubmitting ? (
-            <Spinner height="20px" width="20px" />
-          ) : isSMTPConfigured ? (
-            t("common.continue")
-          ) : (
-            t("common.go_to_workspace")
-          )}
+          {isSubmitting ? <Spinner height="20px" width="20px" /> : t("common.continue")}
         </Button>
-        {isSMTPConfigured && (
-          <Button
-            type="button"
-            data-ph-element={AUTH_TRACKER_ELEMENTS.SIGN_IN_WITH_UNIQUE_CODE}
-            onClick={redirectToUniqueCodeSignIn}
-            variant="secondary"
-            className="w-full"
-            size="xl"
-          >
-            {t("auth.common.sign_in_with_unique_code")}
-          </Button>
-        )}
       </div>
     </form>
   );
