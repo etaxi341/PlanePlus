@@ -104,7 +104,7 @@ class SignInAuthEndpoint(APIView):
                 f"{SWG_AUTH_API}/Login",
                 json=login_payload,
                 headers={"Content-Type": "application/json"},
-                timeout=15,
+                timeout=60,
             )
         except http_requests.RequestException:
             return Response(
