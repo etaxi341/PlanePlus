@@ -30,7 +30,7 @@ export const NETWORK_CHOICES: TNetworkChoice[] = [
     key: 2,
     labelKey: "Public",
     i18n_label: "workspace_projects.network.public.title",
-    description: "workspace_projects.network.public.description", //"Anyone in the workspace except Guests can join",
+    description: "workspace_projects.network.public.description", //"Anyone in the workspace can join",
     iconKey: "Globe2",
   },
 ];

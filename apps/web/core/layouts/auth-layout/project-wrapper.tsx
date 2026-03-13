@@ -10,7 +10,7 @@ import { observer } from "mobx-react";
 import useSWR from "swr";
 // plane imports
 import { EUserPermissions, EUserPermissionsLevel } from "@plane/constants";
-import { GANTT_TIMELINE_TYPE } from "@plane/types";
+import { EProjectNetwork, GANTT_TIMELINE_TYPE } from "@plane/types";
 // components
 import { ProjectAccessRestriction } from "@/components/auth-screens/project/project-access-restriction";
 import {
@@ -51,7 +51,7 @@ export const ProjectAuthWrapper = observer(function ProjectAuthWrapper(props: IP
   const [isJoiningProject, setIsJoiningProject] = useState(false);
   // store hooks
   const { fetchUserProjectInfo, allowPermissions, getProjectRoleByWorkspaceSlugAndProjectId } = useUserPermissions();
-  const { fetchProjectDetails } = useProject();
+  const { fetchProjectDetails, getProjectById } = useProject();
   const { joinProject } = useUserPermissions();
   const { fetchAllCycles } = useCycle();
   const { fetchModulesSlim, fetchModules } = useModule();
@@ -73,6 +73,8 @@ export const ProjectAuthWrapper = observer(function ProjectAuthWrapper(props: IP
   );
   const currentProjectRole = getProjectRoleByWorkspaceSlugAndProjectId(workspaceSlug, projectId);
   const isWorkspaceAdmin = allowPermissions([EUserPermissions.ADMIN], EUserPermissionsLevel.WORKSPACE, workspaceSlug);
+  const currentProject = getProjectById(projectId);
+  const isPublicProject = currentProject?.network === EProjectNetwork.PUBLIC;
   // Initialize module timeline chart
   useEffect(() => {
     initGantt();
@@ -151,6 +153,7 @@ export const ProjectAuthWrapper = observer(function ProjectAuthWrapper(props: IP
       <ProjectAccessRestriction
         errorStatusCode={projectDetailsError?.status}
         isWorkspaceAdmin={isWorkspaceAdmin}
+        isPublicProject={isPublicProject}
         handleJoinProject={handleJoinProject}
         isJoinButtonDisabled={isJoiningProject}
       />

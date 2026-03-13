@@ -1261,7 +1261,7 @@ export default {
       },
       public: {
         title: "Public",
-        description: "Anyone in the workspace except Guests can join",
+        description: "Anyone in the workspace can join",
       },
     },
     error: {

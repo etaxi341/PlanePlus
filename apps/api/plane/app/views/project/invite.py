@@ -125,7 +125,7 @@ class UserProjectInvitationsViewset(BaseViewSet):
             .select_related("workspace", "workspace__owner", "project")
         )
 
-    @allow_permission([ROLE.ADMIN, ROLE.MEMBER], level="WORKSPACE")
+    @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST], level="WORKSPACE")
     def create(self, request, slug):
         project_ids = request.data.get("project_ids", [])
 
@@ -136,11 +136,15 @@ class UserProjectInvitationsViewset(BaseViewSet):
         projects = Project.objects.filter(id__in=project_ids, workspace__slug=slug).only("id", "network")
         # Check if user has permission to join each project
         for project in projects:
-            if project.network == ProjectNetwork.SECRET.value and workspace_member.role != ROLE.ADMIN.value:
-                return Response(
-                    {"error": "Only workspace admins can join private project"},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
+            if project.network == ProjectNetwork.SECRET.value:
+                if workspace_member.role != ROLE.ADMIN.value:
+                    return Response(
+                        {"error": "Only workspace admins can join private project"},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+            elif project.network == ProjectNetwork.PUBLIC.value and workspace_member.role == ROLE.GUEST.value:
+                # Guests are allowed to join public projects — no restriction here
+                pass
 
         workspace_role = workspace_member.role
         workspace = workspace_member.workspace
