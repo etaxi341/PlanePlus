@@ -33,6 +33,7 @@ x-proxy-env: &proxy-env
   LISTEN_HTTPS_PORT: ${LISTEN_HTTPS_PORT:-443}
   BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-uploads}
   SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+  TRUSTED_PROXIES: ${TRUSTED_PROXIES:-0.0.0.0/0}
 
 x-mq-env: &mq-env # RabbitMQ Settings
   RABBITMQ_HOST: ${RABBITMQ_HOST:-plane-mq}
@@ -59,6 +60,7 @@ x-app-env: &app-env
   MINIO_ENDPOINT_SSL: ${MINIO_ENDPOINT_SSL:-0}
   LIVE_SERVER_SECRET_KEY: ${LIVE_SERVER_SECRET_KEY:-2FiJk1U2aiVPEQtzLehYGlTSnTnrs7LW}
   ALLOWED_EMAIL_DOMAIN: ${ALLOWED_EMAIL_DOMAIN:-""}
+  SWG_RESTSERVICE_URL: ${SWG_RESTSERVICE_URL:-https://services.swg.de/api/Auth}
 
 services:
   web:

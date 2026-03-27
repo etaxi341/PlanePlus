@@ -134,6 +134,9 @@ services:
     command: ./bin/docker-entrypoint-api-local.sh
     env_file:
       - ./apps/api/.env
+    environment:
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-0.0.0.0/0}
+      SWG_RESTSERVICE_URL: ${SWG_RESTSERVICE_URL:-https://services.swg.de/api/Auth}
     depends_on:
       - planeplus-db
       - planeplus-redis
@@ -212,6 +215,7 @@ services:
       FILE_SIZE_LIMIT: ${FILE_SIZE_LIMIT:-5242880}
       BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-uploads}
       SITE_ADDRESS: ":80"
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-0.0.0.0/0}
     depends_on:
       - api
       - web

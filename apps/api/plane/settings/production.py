@@ -64,6 +64,11 @@ LOGGING = {
             "handlers": ["console"],
             "propagate": False,
         },
+        "plane.api.auth": {
+            "level": "DEBUG" if DEBUG else "INFO",
+            "handlers": ["console"],
+            "propagate": False,
+        },
         "plane.api": {
             "level": "DEBUG" if DEBUG else "INFO",
             "handlers": ["console"],

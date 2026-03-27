@@ -8,7 +8,6 @@ import { useEffect, useState } from "react";
 import { observer } from "mobx-react";
 import { useSearchParams } from "next/navigation";
 // plane imports
-import { OAuthOptions } from "@plane/ui";
 // helpers
 import type { TAuthErrorInfo } from "@/helpers/authentication.helper";
 import {
@@ -18,7 +17,6 @@ import {
   EErrorAlertType,
   authErrorHandler,
 } from "@/helpers/authentication.helper";
-// hooks
 import { useOAuthConfig } from "@/hooks/oauth";
 import { useInstance } from "@/hooks/store/use-instance";
 // local imports
@@ -50,8 +48,9 @@ export const AuthRoot = observer(function AuthRoot(props: TAuthRoot) {
   // derived values
   const oAuthActionText = "Sign in";
   const { isOAuthEnabled, oAuthOptions } = useOAuthConfig(oAuthActionText);
+  const filteredOAuthOptions = oAuthOptions.filter((option) => option.id !== "github");
   const isEmailBasedAuthEnabled = config?.is_email_password_enabled || config?.is_magic_login_enabled;
-  const noAuthMethodsAvailable = !isOAuthEnabled && !isEmailBasedAuthEnabled;
+  const noAuthMethodsAvailable = !isEmailBasedAuthEnabled && filteredOAuthOptions.length === 0;
 
   useEffect(() => {
     if (!authMode && currentAuthMode) setAuthMode(EAuthModes.SIGN_IN);
@@ -118,12 +117,30 @@ export const AuthRoot = observer(function AuthRoot(props: TAuthRoot) {
         authMode={EAuthModes.SIGN_IN}
         currentAuthStep={authStep}
       />
-      {isOAuthEnabled && (
-        <OAuthOptions
-          options={oAuthOptions}
-          compact={authStep === EAuthSteps.PASSWORD || authStep === EAuthSteps.TWO_FACTOR_CODE}
-          showDivider={isEmailBasedAuthEnabled}
-        />
+      {isOAuthEnabled && filteredOAuthOptions.length > 0 && authStep === EAuthSteps.EMAIL && (
+        <div className="space-y-6">
+          <div className="grid gap-3">
+            {filteredOAuthOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className="border-custom-border-300 bg-custom-background-100 text-sm text-custom-text-200 hover:bg-custom-background-90 flex h-11 w-full items-center justify-center gap-3 rounded-md border px-4 font-medium transition-colors"
+                onClick={option.onClick}
+              >
+                {option.icon}
+                <span>{option.text}</span>
+              </button>
+            ))}
+          </div>
+          {isEmailBasedAuthEnabled && (
+            <div className="relative flex items-center justify-center">
+              <div className="border-custom-border-200 absolute inset-x-0 border-t" />
+              <span className="bg-custom-background-100 text-custom-text-300 relative px-3 text-11 font-medium tracking-[0.2em] uppercase">
+                oder
+              </span>
+            </div>
+          )}
+        </div>
       )}
       {isEmailBasedAuthEnabled && (
         <AuthFormRoot

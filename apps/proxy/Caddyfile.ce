@@ -4,18 +4,30 @@ max_size {$FILE_SIZE_LIMIT}
 }
 
   redir /spaces /spaces/ permanent
-reverse_proxy /spaces/* space:3002
+reverse_proxy /spaces/* space:3002 {
+header_up X-SWG-Client-IP {client_ip}
+}
 
   redir /god-mode /god-mode/ permanent
-reverse_proxy /god-mode/* admin:3001
+reverse_proxy /god-mode/* admin:3001 {
+header_up X-SWG-Client-IP {client_ip}
+}
 
-reverse_proxy /live/* live:3100
+reverse_proxy /live/* live:3100 {
+header_up X-SWG-Client-IP {client_ip}
+}
 
-reverse_proxy /api/* api:8000
+reverse_proxy /api/* api:8000 {
+header_up X-SWG-Client-IP {client_ip}
+}
 
-reverse_proxy /auth/* api:8000
+reverse_proxy /auth/* api:8000 {
+header_up X-SWG-Client-IP {client_ip}
+}
 
-reverse_proxy /static/* api:8000
+reverse_proxy /static/* api:8000 {
+header_up X-SWG-Client-IP {client_ip}
+}
 
 reverse_proxy /{$BUCKET_NAME}/* planeplus-minio:9000
 reverse_proxy /{$BUCKET_NAME} planeplus-minio:9000

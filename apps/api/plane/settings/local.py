@@ -63,6 +63,11 @@ LOGGING = {
             "handlers": ["console"],
             "propagate": False,
         },
+        "plane.api.auth": {
+            "level": "INFO",
+            "handlers": ["console"],
+            "propagate": False,
+        },
         "plane.api": {"level": "INFO", "handlers": ["console"], "propagate": False},
         "plane.worker": {"level": "INFO", "handlers": ["console"], "propagate": False},
         "plane.exception": {
