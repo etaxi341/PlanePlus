@@ -16,6 +16,9 @@ jobs:
       contents: read
       security-events: write
 
+    env:
+      CODEQL_ACTION_FILE_COVERAGE_ON_PRS: "false"
+
     strategy:
       fail-fast: false
       matrix:
@@ -23,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4

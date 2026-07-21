@@ -4,7 +4,6 @@
  * See the LICENSE file for details.
  */
 
-import type { FC } from "react";
 import { useMemo } from "react";
 import { isEmpty } from "lodash-es";
 import { observer } from "mobx-react";
@@ -20,9 +19,9 @@ import { getDate } from "@plane/utils";
 import { useCycle } from "@/hooks/store/use-cycle";
 // plane web components
 import { useWorkItemFilters } from "@/hooks/store/work-item-filters/use-work-item-filters";
-import { SidebarChartRoot } from "@/plane-web/components/cycles";
 // local imports
 import { CycleProgressStats } from "./progress-stats";
+import { SidebarChart } from "./sidebar-chart";
 
 type TCycleAnalyticsProgress = {
   workspaceSlug: string;
@@ -132,7 +131,7 @@ export const CycleAnalyticsProgress = observer(function CycleAnalyticsProgress(p
                 {cycleStartDate && cycleEndDate ? (
                   <>
                     {isCycleDateValid && (
-                      <SidebarChartRoot workspaceSlug={workspaceSlug} projectId={projectId} cycleId={cycleId} />
+                      <SidebarChart workspaceSlug={workspaceSlug} projectId={projectId} cycleId={cycleId} />
                     )}
                     {/* progress detailed view */}
                     {chartDistributionData && (

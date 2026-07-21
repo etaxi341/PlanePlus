@@ -6,7 +6,7 @@
 
 import React, { useState } from "react";
 import { observer } from "mobx-react";
-import { HelpCircle, MessagesSquare, User } from "lucide-react";
+import { HelpCircle, User } from "lucide-react";
 import { useTranslation } from "@plane/i18n";
 import { PageIcon } from "@plane/propel/icons";
 // ui
@@ -14,17 +14,14 @@ import { CustomMenu } from "@plane/ui";
 // components
 import { ProductUpdatesModal } from "@/components/global";
 import { AppSidebarItem } from "@/components/sidebar/sidebar-item";
+import { PlaneVersionNumber } from "@/components/global/version-number";
 // hooks
 import { usePowerK } from "@/hooks/store/use-power-k";
-import { useChatSupport } from "@/hooks/use-chat-support";
-// plane web components
-import { PlaneVersionNumber } from "@/plane-web/components/global";
 
 export const HelpMenuRoot = observer(function HelpMenuRoot() {
   // store hooks
   const { t } = useTranslation();
   const { toggleShortcutsListModal } = usePowerK();
-  const { openChatSupport, isEnabled: isChatSupportEnabled } = useChatSupport();
   // states
   const [isNeedHelpOpen, setIsNeedHelpOpen] = useState(false);
   const [isProductUpdatesModalOpen, setProductUpdatesModalOpen] = useState(false);
@@ -56,18 +53,6 @@ export const HelpMenuRoot = observer(function HelpMenuRoot() {
             <span className="text-11">{t("documentation")}</span>
           </div>
         </CustomMenu.MenuItem>
-        {isChatSupportEnabled && (
-          <CustomMenu.MenuItem>
-            <button
-              type="button"
-              onClick={openChatSupport}
-              className="flex w-full items-center gap-x-2 rounded-sm text-11 hover:bg-layer-1"
-            >
-              <MessagesSquare className="h-3.5 w-3.5 text-secondary" />
-              <span className="text-11">{t("message_support")}</span>
-            </button>
-          </CustomMenu.MenuItem>
-        )}
         <CustomMenu.MenuItem onClick={() => window.open("mailto:sales@plane.so", "_blank")}>
           <div className="flex items-center gap-x-2 rounded-sm text-11">
             <User className="h-3.5 w-3.5 text-secondary" size={14} />

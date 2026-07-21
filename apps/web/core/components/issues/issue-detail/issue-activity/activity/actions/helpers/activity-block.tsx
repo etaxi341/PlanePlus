@@ -4,17 +4,16 @@
  * See the LICENSE file for details.
  */
 
-import type { FC, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Network } from "lucide-react";
 // plane imports
 import { Tooltip } from "@plane/propel/tooltip";
 import { renderFormattedTime, renderFormattedDate, calculateTimeAgo } from "@plane/utils";
 import { useIssueDetail } from "@/hooks/store/use-issue-detail";
 import { usePlatformOS } from "@/hooks/use-platform-os";
-// plane web imports
-import { IssueCreatorDisplay } from "@/plane-web/components/issues/issue-details/issue-creator";
 // local imports
 import { IssueUser } from "../";
+import { IssueCreatorDisplay } from "./issue-creator";
 
 type TIssueActivityBlockComponent = {
   icon?: ReactNode;

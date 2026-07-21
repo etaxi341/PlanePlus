@@ -4,7 +4,6 @@
  * See the LICENSE file for details.
  */
 
-import type { FC } from "react";
 import { Fragment, useMemo, useState } from "react";
 import { observer } from "mobx-react";
 import { useSearchParams } from "next/navigation";
@@ -112,7 +111,7 @@ export const ModuleAnalyticsProgress = observer(function ModuleAnalyticsProgress
         await fetchModuleDetails(workspaceSlug, projectId, moduleId);
       }
       setLoader(false);
-    } catch (error) {
+    } catch (_error) {
       setLoader(false);
       setPlotType(moduleId, plotType);
     }
@@ -128,7 +127,7 @@ export const ModuleAnalyticsProgress = observer(function ModuleAnalyticsProgress
             {isModuleDateValid ? (
               <div className="relative flex w-full items-center justify-between gap-2">
                 <Disclosure.Button className="relative flex w-full items-center gap-2">
-                  <div className="text-13 font-medium text-secondary">{t("progress")}</div>
+                  <div className="text-13 font-medium text-secondary">{t("common.progress")}</div>
                   {progressHeaderPercentage > 0 && (
                     <div className="bg-amber-500/20 text-amber-500 flex h-5 w-9 items-center justify-center rounded-sm text-11 font-medium">{`${progressHeaderPercentage}%`}</div>
                   )}

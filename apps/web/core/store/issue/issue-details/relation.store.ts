@@ -8,12 +8,10 @@ import { uniq, get, set } from "lodash-es";
 import { action, computed, makeObservable, observable, runInAction } from "mobx";
 import { computedFn } from "mobx-utils";
 // plane imports
-import type { TIssueRelationIdMap, TIssueRelationMap, TIssueRelation, TIssue } from "@plane/types";
+import type { TIssueRelationIdMap, TIssueRelationMap, TIssueRelation, TIssue, TIssueRelationTypes } from "@plane/types";
 // components
 import type { TRelationObject } from "@/components/issues/issue-detail-widgets/relations";
-// Plane-web
-import { REVERSE_RELATIONS } from "@/constants/gantt-chart";
-import type { TIssueRelationTypes } from "@/plane-web/types";
+import { REVERSE_RELATIONS } from "@plane/constants";
 // services
 import { IssueRelationService } from "@/services/issue";
 // types
@@ -305,7 +303,7 @@ export class IssueRelationStore implements IIssueRelationStore {
           set(this.relationMap, [issueId], issueRelations);
         }
       });
-    } catch (e) {
+    } catch (_e) {
       console.error("Error while extracting issue relations from issues");
     }
   };
