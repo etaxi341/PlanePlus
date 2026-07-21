@@ -13,7 +13,7 @@ print_header(){
     echo ""
     echo "Other optional environment variables: "
     echo "    SITE_ADDRESS (default: ':80')"
-    echo "    FILE_SIZE_LIMIT (default: 5242880)"
+    echo "    FILE_SIZE_LIMIT (default: 52428800)"
     echo "    APP_PROTOCOL (http or https)"
     echo "    SECRET_KEY (auto-generated on first boot if not set)"
     echo "    LIVE_SERVER_SECRET_KEY (auto-generated on first boot if not set)"
@@ -160,7 +160,7 @@ update_env_file(){
         fi
     fi
     update_env_value "SECRET_KEY" "$SECRET_KEY"
-    update_env_value "FILE_SIZE_LIMIT" "${FILE_SIZE_LIMIT:-5242880}"
+    update_env_value "FILE_SIZE_LIMIT" "${FILE_SIZE_LIMIT:-52428800}"
     # LIVE_SERVER_SECRET_KEY: same first-boot generation strategy.
     local _insecure_lssk="htbqvBJAgpm9bzvf3r4urJer0ENReatceh"
     local _placeholder_lssk="change-this-key-on-deployment"

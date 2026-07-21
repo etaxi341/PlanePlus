@@ -450,9 +450,7 @@ class GenericAssetEndpoint(BaseAPIView):
             # (default MinIO self-hosted setup).
             storage = S3Storage(request=request, is_server=True)
             asset_mime_type = (asset.attributes.get("type") or "").split(";")[0].strip().lower()
-            disposition = (
-                "attachment" if asset_mime_type in settings.SCRIPT_CAPABLE_MIME_TYPES else "inline"
-            )
+            disposition = "attachment" if asset_mime_type in settings.SCRIPT_CAPABLE_MIME_TYPES else "inline"
             presigned_url = storage.generate_presigned_url(
                 object_name=asset.asset.name,
                 filename=asset.attributes.get("name"),
@@ -516,7 +514,7 @@ class GenericAssetEndpoint(BaseAPIView):
         Supports various file types and includes external source tracking for integrations.
         """
         name = sanitize_filename(request.data.get("name"))
-        type = request.data.get("type")
+        type = request.data.get("type") or "application/octet-stream"
         size = int(request.data.get("size", settings.FILE_SIZE_LIMIT))
         project_id = request.data.get("project_id")
         external_id = request.data.get("external_id")
@@ -531,13 +529,6 @@ class GenericAssetEndpoint(BaseAPIView):
 
         # Check if the file size is within the limit
         size_limit = min(size, settings.FILE_SIZE_LIMIT)
-
-        # Check if the file type is allowed
-        if not type or type not in settings.ATTACHMENT_MIME_TYPES:
-            return Response(
-                {"error": "Invalid file type.", "status": False},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
 
         # Get the workspace
         workspace = Workspace.objects.get(slug=slug)

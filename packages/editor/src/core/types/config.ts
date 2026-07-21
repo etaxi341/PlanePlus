@@ -20,7 +20,7 @@ export type TFileHandler = {
   validation: {
     /**
      * @description max file size in bytes
-     * @example enter 5242880(5 * 1024 * 1024) for 5MB
+     * @example enter 52428800 (50 * 1024 * 1024) for 50MB
      */
     maxFileSize: number;
   };

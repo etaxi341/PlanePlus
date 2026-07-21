@@ -136,7 +136,7 @@ export const UserImageUploadModal = observer(function UserImageUploadModal(props
           {fileRejections.length > 0 && (
             <p className="text-13 text-danger-primary">
               {fileRejections[0].errors[0].code === "file-too-large"
-                ? "The image size cannot exceed 5 MB."
+                ? "The image size cannot exceed 50 MB."
                 : "Please upload a file in a valid format."}
             </p>
           )}

@@ -127,6 +127,32 @@ class TestS3StorageSignedURLExpiration:
         clear=True,
     )
     @patch("plane.settings.storage.boto3")
+    def test_generate_presigned_post_caps_upload_at_file_size_limit(self, mock_boto3, settings):
+        mock_s3_client = Mock()
+        mock_s3_client.generate_presigned_post.return_value = {
+            "url": "https://test-url.com",
+            "fields": {},
+        }
+        mock_boto3.client.return_value = mock_s3_client
+        settings.FILE_SIZE_LIMIT = 50 * 1024 * 1024
+
+        storage = S3Storage()
+        storage.generate_presigned_post("test-object", "application/octet-stream", 100 * 1024 * 1024)
+
+        conditions = mock_s3_client.generate_presigned_post.call_args.kwargs["Conditions"]
+        assert ["content-length-range", 1, 50 * 1024 * 1024] in conditions
+
+    @patch.dict(
+        os.environ,
+        {
+            "AWS_ACCESS_KEY_ID": "test-key",
+            "AWS_SECRET_ACCESS_KEY": "test-secret",
+            "AWS_S3_BUCKET_NAME": "test-bucket",
+            "AWS_REGION": "us-east-1",
+        },
+        clear=True,
+    )
+    @patch("plane.settings.storage.boto3")
     def test_generate_presigned_url_uses_default_expiration(self, mock_boto3):
         """Test that generate_presigned_url uses the configured default expiration"""
         # Mock the boto3 client and its response

@@ -120,6 +120,52 @@ class TestGenericAssetCrossWorkspaceIDOR:
         victim_asset.refresh_from_db()
         assert victim_asset.is_uploaded is True
 
+
+@pytest.mark.contract
+class TestGenericAssetUploads:
+    def detail_url(self, slug, asset_id):
+        return f"/api/v1/workspaces/{slug}/assets/{asset_id}/"
+
+    def list_url(self, slug):
+        return f"/api/v1/workspaces/{slug}/assets/"
+
+    @pytest.mark.django_db
+    @pytest.mark.parametrize(
+        ("filename", "mime_type", "expected_type"),
+        [
+            ("message.eml", "message/rfc822", "message/rfc822"),
+            ("unknown.custom-extension", None, "application/octet-stream"),
+        ],
+    )
+    def test_member_can_upload_any_file_type(
+        self,
+        api_key_client,
+        workspace,
+        filename,
+        mime_type,
+        expected_type,
+    ):
+        payload = {"name": filename, "size": 1024}
+        if mime_type:
+            payload["type"] = mime_type
+
+        with mock.patch("plane.api.views.asset.S3Storage") as mock_storage:
+            mock_storage.return_value.generate_presigned_post.return_value = {
+                "url": "https://signed.example/upload",
+                "fields": {},
+            }
+            response = api_key_client.post(self.list_url(workspace.slug), payload, format="json")
+
+        assert response.status_code == status.HTTP_200_OK, f"Got {response.status_code}: {response.data!r}"
+        asset = FileAsset.objects.get(id=response.data["asset_id"])
+        assert asset.attributes["name"] == filename
+        assert asset.attributes["type"] == expected_type
+        mock_storage.return_value.generate_presigned_post.assert_called_once_with(
+            object_name=asset.asset.name,
+            file_type=expected_type,
+            file_size=1024,
+        )
+
     @pytest.mark.django_db
     def test_member_can_patch_own_workspace_asset(self, api_key_client, workspace, create_user):
         """Positive control: an active member of the workspace can still update

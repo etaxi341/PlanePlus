@@ -9,6 +9,7 @@ import uuid
 # Third party imports
 import boto3
 from botocore.exceptions import ClientError
+from django.conf import settings
 from urllib.parse import quote
 
 # Module imports
@@ -66,6 +67,7 @@ class S3Storage(S3Boto3Storage):
         """Generate a presigned URL to upload an S3 object"""
         if expiration is None:
             expiration = self.signed_url_expiration
+        file_size = min(file_size, settings.FILE_SIZE_LIMIT)
         fields = {"Content-Type": file_type}
 
         conditions = [

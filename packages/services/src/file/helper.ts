@@ -104,7 +104,7 @@ const validateAndDetectFileType = async (file: File): Promise<string> => {
   }
 
   // fallback for unknown files
-  return "";
+  return file.type || "application/octet-stream";
 };
 
 /**

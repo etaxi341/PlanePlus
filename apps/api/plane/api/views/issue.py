@@ -1858,10 +1858,6 @@ class IssueAttachmentListCreateAPIEndpoint(BaseAPIView):
                             "status": False,
                         },
                     ),
-                    OpenApiExample(
-                        name="Invalid file type",
-                        value={"error": "Invalid file type.", "status": False},
-                    ),
                 ],
             ),
             404: OpenApiResponse(
@@ -1881,7 +1877,7 @@ class IssueAttachmentListCreateAPIEndpoint(BaseAPIView):
         """Create work item attachment
 
         Generate presigned URL for uploading file attachments to a work item.
-        Validates file type and size before creating the attachment record.
+        Validates file size before creating the attachment record.
         """
         issue = Issue.objects.get(pk=issue_id, workspace__slug=slug, project_id=project_id)
         # if the user is creator or admin,member then allow the upload
@@ -1898,7 +1894,7 @@ class IssueAttachmentListCreateAPIEndpoint(BaseAPIView):
             )
 
         name = sanitize_filename(request.data.get("name"))
-        type = request.data.get("type", False)
+        type = request.data.get("type") or "application/octet-stream"
         size = request.data.get("size")
         external_id = request.data.get("external_id")
         external_source = request.data.get("external_source")
@@ -1911,12 +1907,6 @@ class IssueAttachmentListCreateAPIEndpoint(BaseAPIView):
             )
 
         size_limit = min(size, settings.FILE_SIZE_LIMIT)
-
-        if not type or type not in settings.ATTACHMENT_MIME_TYPES:
-            return Response(
-                {"error": "Invalid file type.", "status": False},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
 
         # Get the workspace
         workspace = Workspace.objects.get(slug=slug)
