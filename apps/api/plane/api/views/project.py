@@ -39,6 +39,8 @@ from plane.db.models import (
     ProjectPage,
 )
 from plane.bgtasks.webhook_task import model_activity, webhook_activity
+from plane.utils.act_as import content_task_delay
+from plane.api.act_as_registry import project_visibility
 from plane.utils.exception_logger import log_exception
 from .base import BaseAPIView
 from plane.utils.host import base_host
@@ -85,7 +87,7 @@ class ProjectListCreateAPIEndpoint(BaseAPIView):
 
     def get_queryset(self):
         return (
-            Project.objects.filter(workspace__slug=self.kwargs.get("slug"))
+            Project.objects.filter(workspace__slug=self.kwargs.get("slug")).filter(project_visibility(self.request))
             .filter(
                 Q(
                     project_projectmember__member=self.request.user,
@@ -351,7 +353,7 @@ class ProjectListLiteAPIEndpoint(BaseAPIView):
         # Projects the user can access: those they are an active member of, plus
         # public (network=2) ones.
         return (
-            Project.objects.filter(workspace__slug=self.kwargs.get("slug"))
+            Project.objects.filter(workspace__slug=self.kwargs.get("slug")).filter(project_visibility(self.request))
             .filter(
                 Q(
                     project_projectmember__member=self.request.user,
@@ -439,7 +441,7 @@ class ProjectDetailAPIEndpoint(BaseAPIView):
 
     def get_queryset(self):
         return (
-            Project.objects.filter(workspace__slug=self.kwargs.get("slug"))
+            Project.objects.filter(workspace__slug=self.kwargs.get("slug")).filter(project_visibility(self.request))
             .filter(
                 Q(
                     project_projectmember__member=self.request.user,
@@ -582,7 +584,8 @@ class ProjectDetailAPIEndpoint(BaseAPIView):
 
                 project = self.get_queryset().filter(pk=serializer.instance.id).first()
 
-                model_activity.delay(
+                content_task_delay(
+                    model_activity,
                     model_name="project",
                     model_id=str(project.id),
                     requested_data=request.data,

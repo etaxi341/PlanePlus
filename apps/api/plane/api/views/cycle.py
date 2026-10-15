@@ -36,6 +36,7 @@ from plane.api.serializers import (
 )
 from plane.app.permissions import ProjectEntityPermission
 from plane.bgtasks.issue_activities_task import issue_activity
+from plane.utils.act_as import content_task_delay, content_bulk_authors
 from plane.db.models import (
     Cycle,
     CycleIssue,
@@ -336,7 +337,8 @@ class CycleListCreateAPIEndpoint(BaseAPIView):
                     )
                 serializer.save(project_id=project_id)
                 # Send the model activity
-                model_activity.delay(
+                content_task_delay(
+                    model_activity,
                     model_name="cycle",
                     model_id=str(serializer.instance.id),
                     requested_data=request.data,
@@ -592,7 +594,8 @@ class CycleDetailAPIEndpoint(BaseAPIView):
             serializer.save()
 
             # Send the model activity
-            model_activity.delay(
+            content_task_delay(
+                model_activity,
                 model_name="cycle",
                 model_id=str(serializer.instance.id),
                 requested_data=request.data,
@@ -637,7 +640,8 @@ class CycleDetailAPIEndpoint(BaseAPIView):
 
         cycle_issues = list(CycleIssue.objects.filter(cycle_id=self.kwargs.get("pk")).values_list("issue", flat=True))
 
-        issue_activity.delay(
+        content_task_delay(
+            issue_activity,
             type="cycle.activity.deleted",
             requested_data=json.dumps(
                 {
@@ -1007,7 +1011,7 @@ class CycleIssueListCreateAPIEndpoint(BaseAPIView):
 
         # New issues to create
         created_records = CycleIssue.objects.bulk_create(
-            [
+            content_bulk_authors([
                 CycleIssue(
                     project_id=project_id,
                     workspace_id=cycle.workspace_id,
@@ -1015,7 +1019,7 @@ class CycleIssueListCreateAPIEndpoint(BaseAPIView):
                     issue_id=issue,
                 )
                 for issue in new_issues
-            ],
+            ]),
             ignore_conflicts=True,
             batch_size=10,
         )
@@ -1040,10 +1044,13 @@ class CycleIssueListCreateAPIEndpoint(BaseAPIView):
             )
 
         # Update the cycle issues
-        CycleIssue.objects.bulk_update(updated_records, ["cycle_id"], batch_size=100)
+        CycleIssue.objects.bulk_update(
+            content_bulk_authors(updated_records, update=True), ["cycle_id", "updated_by"], batch_size=100,
+        )
 
         # Capture Issue Activity
-        issue_activity.delay(
+        content_task_delay(
+            issue_activity,
             type="cycle.activity.created",
             requested_data=json.dumps({"cycles_list": issues}),
             actor_id=str(self.request.user.id),
@@ -1153,7 +1160,8 @@ class CycleIssueDetailAPIEndpoint(BaseAPIView):
         )
         issue_id = cycle_issue.issue_id
         cycle_issue.delete()
-        issue_activity.delay(
+        content_task_delay(
+            issue_activity,
             type="cycle.activity.deleted",
             requested_data=json.dumps(
                 {

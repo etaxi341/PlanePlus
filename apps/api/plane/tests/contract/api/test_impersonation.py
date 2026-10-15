@@ -5,6 +5,8 @@
 from concurrent.futures import ThreadPoolExecutor
 import importlib
 import json
+import re
+from datetime import timedelta
 from threading import Barrier
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -13,7 +15,7 @@ from uuid import uuid4
 import pytest
 from django.core.cache import cache
 from django.db import DatabaseError, IntegrityError, close_old_connections, connection, transaction
-from django.urls import reverse
+from django.urls import reverse, resolve
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -37,6 +39,7 @@ from plane.db.models import (
 )
 from plane.license.models import Instance, InstanceAdmin
 from plane.utils.act_as import get_act_as_context
+from plane.db import models as db_models
 
 
 pytestmark = [pytest.mark.contract, pytest.mark.django_db]
@@ -49,12 +52,15 @@ def isolated_act_as(settings, monkeypatch, db):
     settings.DEBUG = False
     settings.WEB_URL = "http://testserver"
     settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+    settings.STORAGES = {"default": {"BACKEND": "django.core.files.storage.FileSystemStorage"}}
     cache.clear()
     tasks = SimpleNamespace(activity=Mock(), webhook=Mock(), crawl=Mock(), logs=Mock())
     monkeypatch.setattr("plane.api.views.issue.issue_activity.delay", tasks.activity)
     monkeypatch.setattr("plane.api.views.issue.model_activity.delay", tasks.webhook)
     monkeypatch.setattr("plane.api.views.issue.crawl_work_item_link_title.delay", tasks.crawl)
     monkeypatch.setattr("plane.middleware.logger.process_logs.delay", tasks.logs)
+    monkeypatch.setattr("plane.db.mixins.soft_delete_related_objects.delay", Mock())
+    monkeypatch.setattr("plane.api.views.issue.get_asset_object_metadata.delay", Mock())
     # The repository's default --nomigrations skips RunSQL. Exercise the REAL
     # PostgreSQL guard even in that mode, then remove it only for pytest's flush.
     with connection.cursor() as cursor:
@@ -345,7 +351,7 @@ def test_payload_cannot_override_identity_or_scope(team, field):
     assert Issue.objects.count() == 1
 
 
-@pytest.mark.parametrize("method", ["put", "delete"])
+@pytest.mark.parametrize("method", ["put"])
 def test_unregistered_methods_do_not_execute_as_admin(team, method):
     response = getattr(client_for(team.token), method)(
         f"{items(team)}{team.issue.id}/",
@@ -384,16 +390,16 @@ def test_boundary_rejection_is_audited_before_csrf_can_short_circuit(team):
     assert not audit_for(response).succeeded
 
 
-def test_read_headers_are_ignored_even_when_disabled(team, settings):
+def test_read_headers_fail_closed_when_disabled(team, settings):
     settings.PLANEPLUS_ENABLE_ACT_AS = False
     client = client_for(team.token)
     url = f"{items(team)}{team.issue.id}/"
     normal = client.get(url)
     with_header = client.get(url, HTTP_X_PLANEPLUS_ACT_AS_USER="invalid")
-    assert normal.status_code == with_header.status_code == 200
-    assert normal.data == with_header.data
-    assert AUDIT_HEADER not in with_header
-    assert not ImpersonationAudit.objects.exists()
+    assert normal.status_code == 200
+    assert with_header.status_code == 403
+    assert with_header.data["error_code"] == "act_as_disabled"
+    assert not audit_for(with_header).succeeded
 
 
 def test_authentication_still_requires_callers_valid_key_and_never_uses_session_or_bearer(team):
@@ -596,9 +602,472 @@ def test_oauth_callback_retains_its_provider_identity_without_impersonation(team
         response = client.get(
             reverse("google-callback"), {"code": "provider-code", "state": "provider-state"}, **extra_headers
         )
-        assert response.status_code == 302
-        assert login.call_args.kwargs["user"] is team.other
+        if extra_headers:
+            assert response.status_code == 403
+        else:
+            assert response.status_code == 302
+            assert login.call_args.kwargs["user"] is team.other
+    assert ImpersonationAudit.objects.count() == 1
+
+
+def test_delegated_reads_use_target_not_admin_membership(team):
+    ProjectMember.objects.filter(project=team.project, member=team.admin).delete(soft=False)
+    client = client_for(team.token)
+    for url in (
+        f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/",
+        f"{items(team)}{team.issue.id}/",
+        comments(team),
+    ):
+        response = client.get(url, **headers(team.target))
+        assert response.status_code == 200, response.content
+        audit = audit_for(response)
+        assert audit.actor_id == team.admin.id and audit.target_user_id == team.target.id
+        assert audit.method == "GET" and audit.succeeded
+    ProjectMember.objects.filter(project=team.project, member=team.target).update(is_active=False)
+    assert client.get(f"{items(team)}{team.issue.id}/", **headers(team.target)).status_code == 403
+
+
+def test_delegated_reads_require_admin_valid_target_and_supported_route(team):
+    client = client_for(APIToken.objects.create(user=team.other))
+    assert client.get(comments(team), **headers(team.target)).status_code == 403
+    client = client_for(team.token)
+    assert client.get(comments(team), HTTP_X_PLANEPLUS_ACT_AS_USER="invalid").status_code == 400
+    assert client.get("/api/v1/users/me/", **headers(team.target)).status_code == 403
+
+
+def test_guest_reads_hide_other_items_and_internal_comments(team):
+    Project.objects.filter(id=team.project.id).update(guest_view_all_features=False)
+    hidden = Issue.objects.create(project=team.project, name="Other user's hidden work")
+    client = client_for(team.token)
+    internal = client.post(comments(team), {"comment_html": "<p>Private</p>"}, format="json", **headers(team.other))
+    public = client.post(
+        comments(team), {"comment_html": "<p>Public</p>", "access": "EXTERNAL"}, format="json", **headers(team.other)
+    )
+    ProjectMember.objects.filter(project=team.project, member=team.target).update(role=5)
+    response = client.get(items(team), **headers(team.target))
+    assert response.status_code == 200, response.content
+    assert [str(item["id"]) for item in response.data["results"]] == [str(team.issue.id)]
+    assert client.get(f"{items(team)}{hidden.id}/", **headers(team.target)).status_code == 403
+    response = client.get(comments(team), **headers(team.target))
+    assert response.status_code == 200
+    assert [str(comment["id"]) for comment in response.data["results"]] == [str(public.data["id"])]
+    assert client.get(f"{comments(team)}{internal.data['id']}/", **headers(team.target)).status_code == 403
+
+
+def test_capabilities_and_resolver_are_admin_only_and_work_when_disabled(team, settings):
+    settings.PLANEPLUS_ENABLE_ACT_AS = False
+    base = f"/api/v1/workspaces/{team.workspace.slug}/"
+    client = client_for(team.token)
+    response = client.get(f"{base}act-as-capabilities/")
+    assert response.status_code == 200, response.content
+    assert response.data["version"] == 2 and response.data["enabled"] is False
+    assert response.data["reads_as_target"] and response.data["public_project_join"]
+    assert all(operation["paths"] for operation in response.data["operations"])
+    for operation in response.data["operations"]:
+        for path in operation["paths"]:
+            concrete = re.sub(r"<uuid:\w+>", str(uuid4()), path)
+            concrete = re.sub(r"<(?:str:)?\w+>", "example", concrete)
+            callback = resolve(concrete).func
+            methods = callback.initkwargs.get("http_method_names", callback.cls.http_method_names)
+            assert operation["method"].lower() in methods
+    resolved = client.get(f"{base}act-as-users/resolve/", {"email": team.target.email.upper()})
+    assert resolved.status_code == 200 and resolved.data["id"] == str(team.target.id)
+    assert resolved.data["eligible"] and resolved.data["is_active"] and not resolved.data["is_bot"]
+    team.target.is_active = False
+    team.target.save()
+    WorkspaceMember.objects.filter(workspace=team.workspace, member=team.target).update(is_active=False)
+    resolved = client.get(f"{base}act-as-users/resolve/", {"email": team.target.email})
+    assert resolved.status_code == 200 and not resolved.data["is_active"] and not resolved.data["eligible"]
+    outsider = User.objects.create(email="elsewhere@example.com", username="elsewhere")
+    assert client.get(f"{base}act-as-users/resolve/", {"email": outsider.email}).status_code == 404
+    unauthorized = client_for(APIToken.objects.create(user=team.other))
+    assert unauthorized.get(f"{base}act-as-capabilities/").status_code == 403
+    assert unauthorized.get(f"{base}act-as-users/resolve/", {"email": team.admin.email}).status_code == 403
+
+
+def public_project(team):
+    return Project.objects.create(workspace=team.workspace, name="Public join", identifier="PUBLIC", network=2)
+
+
+def join_url(team, project):
+    return f"/api/v1/workspaces/{team.workspace.slug}/projects/{project.id}/join/"
+
+
+def test_public_join_is_audited_idempotent_and_does_not_require_admin_project_membership(team):
+    project = public_project(team)
+    client = client_for(team.token)
+    joined = client.post(join_url(team, project), {}, format="json", **headers(team.target))
+    assert joined.status_code == 201, joined.content
+    membership = ProjectMember.objects.get(project=project, member=team.target)
+    assert membership.role == 15 and membership.created_by_id == team.target.id
+    assert db_models.ProjectUserProperty.objects.filter(project=project, user=team.target).count() == 1
+    audit = audit_for(joined)
+    assert audit.resource_id == membership.id and audit.actor_id == team.admin.id and audit.action == "project.join"
+    repeated = client.post(join_url(team, project), {}, format="json", **headers(team.target))
+    assert repeated.status_code == 200 and repeated.data["joined"] is False
+    assert ProjectMember.objects.filter(project=project, member=team.target).count() == 1
+    assert not ProjectMember.objects.filter(project=project, member=team.admin).exists()
+
+
+@pytest.mark.parametrize("workspace_role,expected", [(5, 5), (15, 15), (20, 15)])
+def test_public_join_never_grants_project_admin(team, workspace_role, expected):
+    WorkspaceMember.objects.filter(workspace=team.workspace, member=team.target).update(role=workspace_role)
+    project = public_project(team)
+    response = client_for(team.token).post(join_url(team, project), {}, format="json", **headers(team.target))
+    assert response.status_code == 201 and response.data["role"] == expected
+
+
+def test_public_join_rejects_private_archived_removed_and_role_payload(team):
+    client = client_for(team.token)
+    project = public_project(team)
+    assert client.post(join_url(team, team.project), {}, format="json", **headers(team.target)).status_code == 403
+    assert client.post(join_url(team, project), {"role": 20}, format="json", **headers(team.target)).status_code == 400
+    Project.objects.filter(id=project.id).update(archived_at=timezone.now())
+    assert client.post(join_url(team, project), {}, format="json", **headers(team.target)).status_code == 403
+    Project.objects.filter(id=project.id).update(archived_at=None)
+    ProjectMember.objects.create(project=project, member=team.target, role=5, is_active=False)
+    assert client.post(join_url(team, project), {}, format="json", **headers(team.target)).status_code == 403
+
+
+@pytest.mark.parametrize(
+    "family,model,payload",
+    [
+        ("labels", "Label", {"name": "Delegated label", "color": "#00ff00"}),
+        ("states", "State", {"name": "Delegated state", "color": "#00ff00", "group": "started"}),
+        ("cycles", "Cycle", {"name": "Delegated cycle"}),
+        ("modules", "Module", {"name": "Delegated module"}),
+        ("estimates", "Estimate", {"name": "Delegated estimate", "type": "points"}),
+    ],
+)
+def test_extended_content_create_update_and_delete_are_audited(team, family, model, payload):
+    Project.objects.filter(id=team.project.id).update(cycle_view=True, module_view=True)
+    url = f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/{family}/"
+    client = client_for(team.token)
+    response = client.post(url, payload, format="json", **headers(team.target))
+    assert response.status_code in (200, 201), response.content
+    obj = getattr(db_models, model).objects.get(id=response.data["id"])
+    assert obj.created_by_id == team.target.id and audit_for(response).resource_id == obj.id
+    detail = url if family == "estimates" else f"{url}{obj.id}/"
+    if family == "estimates":
+        update = {"estimate_id": str(obj.id)}
+    else:
+        update = {"name": "Edited through delegation"}
+    edited = client.patch(detail, update, format="json", **headers(team.other))
+    assert edited.status_code in (200, 204), edited.content
+    if family != "estimates":
+        obj.refresh_from_db()
+        assert obj.updated_by_id == team.other.id
+    # Existing cycle/module handlers require project-admin deletion.
+    target = team.admin if family in ("cycles", "modules") else team.target
+    deleted = client.delete(detail, {}, format="json", **headers(target))
+    assert deleted.status_code == 204, deleted.content
+    assert audit_for(deleted).succeeded
+
+
+def test_expanded_fields_do_not_allow_identity_scope_or_project_role_changes(team):
+    client = client_for(team.token)
+    base = f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/"
+    for family in ("states", "labels", "cycles", "modules", "estimates"):
+        response = client.post(
+            f"{base}{family}/", {"name": "No", "created_by": str(team.other.id)}, format="json", **headers(team.target)
+        )
+        assert response.status_code == 400
+    response = client.patch(base, {"network": 2}, format="json", **headers(team.admin))
+    assert response.status_code == 400
+    response = client.patch(base, {"name": "No member administration"}, format="json", **headers(team.target))
+    assert response.status_code == 403
+    response = client.patch(base, {"name": "Admin metadata"}, format="json", **headers(team.admin))
+    assert response.status_code == 200, response.content
+
+
+def test_work_item_archive_restore_delete_and_comment_delete(team):
+    client = client_for(team.token)
+    detail = f"{items(team)}{team.issue.id}/"
+    archived = client.patch(
+        detail, {"archived_at": timezone.now().date().isoformat()}, format="json", **headers(team.target)
+    )
+    assert archived.status_code == 200, archived.content
+    team.issue.refresh_from_db()
+    assert team.issue.archived_at is not None
+    restored = client.patch(detail, {"archived_at": None}, format="json", **headers(team.target))
+    assert restored.status_code == 200, restored.content
+    comment = client.post(comments(team), {"comment_html": "<p>Remove me</p>"}, format="json", **headers(team.target))
+    denied = client.delete(f"{comments(team)}{comment.data['id']}/", {}, format="json", **headers(team.other))
+    assert denied.status_code == 403
+    removed = client.delete(f"{comments(team)}{comment.data['id']}/", {}, format="json", **headers(team.target))
+    assert (
+        removed.status_code == 204
+        and audit_for(removed).resource_id == db_models.IssueComment.all_objects.get(id=comment.data["id"]).id
+    )
+    removed = client.delete(detail, {}, format="json", **headers(team.target))
+    assert removed.status_code == 204 and audit_for(removed).resource_id == team.issue.id
+
+
+def test_bulk_assignments_reject_cross_project_and_track_effective_author(team):
+    foreign = Project.objects.create(workspace=team.workspace, name="Other", identifier="OTHER", network=0)
+    issue = Issue.objects.create(project=foreign, name="Not in target project")
+    cycle = db_models.Cycle.objects.create(project=team.project, name="Cycle", owned_by=team.target)
+    url = f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/cycles/{cycle.id}/cycle-issues/"
+    client = client_for(team.token)
+    denied = client.post(url, {"issues": [str(issue.id)]}, format="json", **headers(team.target))
+    assert denied.status_code == 403, denied.content
+    response = client.post(url, {"issues": [str(team.issue.id)]}, format="json", **headers(team.target))
+    assert response.status_code == 200, response.content
+    assert db_models.CycleIssue.objects.get(cycle=cycle, issue=team.issue).created_by_id == team.target.id
+
+
+def test_relations_require_same_project_and_are_audited(team):
+    other_issue = Issue.objects.create(project=team.project, name="Related")
+    foreign_project = Project.objects.create(workspace=team.workspace, name="Forbidden", identifier="FORBID", network=0)
+    foreign_issue = Issue.objects.create(project=foreign_project, name="Secret")
+    url = f"{items(team)}{team.issue.id}/relations/"
+    client = client_for(team.token)
+    denied = client.post(
+        url, {"relation_type": "relates_to", "issues": [str(foreign_issue.id)]}, format="json", **headers(team.target)
+    )
+    assert denied.status_code == 403, denied.content
+    created = client.post(
+        url, {"relation_type": "relates_to", "issues": [str(other_issue.id)]}, format="json", **headers(team.target)
+    )
+    assert created.status_code in (200, 201), created.content
+    relation = db_models.IssueRelation.objects.get(issue=team.issue, related_issue=other_issue)
+    assert relation.created_by_id == team.target.id
+    db_models.IssueRelation.objects.create(
+        project=team.project, issue=team.issue, related_issue=foreign_issue, relation_type="relates_to"
+    )
+    read = client.get(url, **headers(team.target))
+    assert read.status_code == 200
+    assert str(foreign_issue.id) not in str(read.data)
+
+
+def test_attachment_lifecycle_and_download_are_scoped_and_audited(team, monkeypatch):
+    storage = Mock()
+    storage.return_value.generate_presigned_post.return_value = {"url": "https://storage.example/upload", "fields": {}}
+    storage.return_value.generate_presigned_url.return_value = "https://storage.example/download"
+    monkeypatch.setattr("plane.api.views.issue.S3Storage", storage)
+    url = f"{items(team)}{team.issue.id}/attachments/"
+    client = client_for(team.token)
+    response = client.post(
+        url, {"name": "test.txt", "type": "text/plain", "size": 10}, format="json", **headers(team.target)
+    )
+    assert response.status_code == 200, response.content
+    asset = db_models.FileAsset.objects.get(id=response.data["asset_id"])
+    assert asset.created_by_id == team.target.id and audit_for(response).resource_id == asset.id
+    confirmed = client.patch(f"{url}{asset.id}/", {}, format="json", **headers(team.other))
+    assert confirmed.status_code == 204, confirmed.content
+    asset.refresh_from_db()
+    assert asset.created_by_id == team.target.id and asset.updated_by_id == team.other.id
+    assert client.get(url, **headers(team.target)).status_code == 200
+    downloaded = client.get(f"{url}{asset.id}/", **headers(team.target))
+    assert downloaded.status_code == 302, downloaded.content
+    assert audit_for(downloaded).succeeded
+    other_issue = Issue.objects.create(project=team.project, name="Other attachment scope")
+    forged = f"{items(team)}{other_issue.id}/attachments/{asset.id}/"
+    for method in ("get", "patch", "delete"):
+        response = getattr(client, method)(forged, **headers(team.target))
+        assert response.status_code == 403, response.content
+    deleted = client.delete(f"{url}{asset.id}/", {}, format="json", **headers(team.target))
+    assert deleted.status_code == 204 and audit_for(deleted).resource_id == asset.id
+
+
+def test_intake_create_edit_delete_keep_target_authorship_and_reject_nested_identity(team):
+    Project.objects.filter(id=team.project.id).update(intake_view=True)
+    db_models.Intake.objects.create(project=team.project, name="Intake", is_default=True)
+    State.objects.create(project=team.project, name="Triage", group="triage", is_triage=True)
+    url = f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/intake-issues/"
+    client = client_for(team.token)
+    denied = client.post(
+        url, {"issue": {"name": "No spoof", "created_by": str(team.other.id)}}, format="json", **headers(team.target)
+    )
+    assert denied.status_code == 400
+    created = client.post(
+        url, {"issue": {"name": "Delegated intake", "priority": "low"}}, format="json", **headers(team.target)
+    )
+    assert created.status_code == 201, created.content
+    issue = Issue.objects.get(name="Delegated intake")
+    assert issue.created_by_id == team.target.id
+    assert db_models.IntakeIssue.objects.get(issue=issue).created_by_id == team.target.id
+    updated = client.patch(
+        f"{url}{issue.id}/", {"issue": {"name": "Edited intake"}}, format="json", **headers(team.other)
+    )
+    assert updated.status_code == 200, updated.content
+    issue.refresh_from_db()
+    assert issue.updated_by_id == team.other.id
+    deleted = client.delete(f"{url}{issue.id}/", {}, format="json", **headers(team.target))
+    assert deleted.status_code == 204, deleted.content
+
+
+def test_estimate_points_cannot_bind_foreign_estimate_and_record_target(team):
+    estimate = db_models.Estimate.objects.create(project=team.project, name="Points")
+    url = (
+        f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/estimates/{estimate.id}/estimate-points/"
+    )
+    client = client_for(team.token)
+    created = client.post(url, {"estimate_points": [{"key": 1, "value": "One"}]}, format="json", **headers(team.target))
+    assert created.status_code == 201, created.content
+    point = db_models.EstimatePoint.objects.get(id=created.data[0]["id"])
+    assert point.created_by_id == team.target.id
+    edited = client.patch(f"{url}{point.id}/", {"value": "Two"}, format="json", **headers(team.other))
+    assert edited.status_code == 200, edited.content
+    assert audit_for(edited).resource_id == point.id
+    deleted = client.delete(f"{url}{point.id}/", {}, format="json", **headers(team.target))
+    assert deleted.status_code == 204
+
+
+def test_removed_memberships_never_leak_through_project_lists_search_or_resolver(team):
+    private = Project.objects.create(workspace=team.workspace, name="Removed access", identifier="REMOVED", network=0)
+    member = ProjectMember.objects.create(project=private, member=team.target, role=15)
+    member.delete()
+    issue = Issue.objects.create(project=private, name="Needle inaccessible")
+    client = client_for(team.token)
+    for suffix in ("projects/", "projects-lite/"):
+        response = client.get(f"/api/v1/workspaces/{team.workspace.slug}/{suffix}", **headers(team.target))
+        assert response.status_code == 200
+        assert str(private.id) not in str(response.data["results"])
+    response = client.get(
+        f"/api/v1/workspaces/{team.workspace.slug}/work-items/search/",
+        {"search": "Needle", "workspace_search": "true"},
+        **headers(team.target),
+    )
+    assert response.status_code == 200 and str(issue.id) not in str(response.data)
+    WorkspaceMember.objects.filter(workspace=team.workspace, member=team.other).delete()
+    response = client.get(
+        f"/api/v1/workspaces/{team.workspace.slug}/act-as-users/resolve/", {"email": team.other.email}
+    )
+    assert response.status_code == 404
+
+
+def test_delegated_authentication_and_permissions_use_primary_and_restore_routing(team, monkeypatch):
+    from rest_framework.test import APIRequestFactory
+    from plane.api.middleware.api_authentication import APIKeyAuthentication
+    from plane.api.views.issue import IssueDetailAPIEndpoint
+    from plane.utils.core import set_use_read_replica, should_use_read_replica, clear_read_replica_context
+
+    original = APIKeyAuthentication.validate_api_token
+    calls = []
+
+    def authenticate(authenticator, token):
+        calls.append(should_use_read_replica())
+        return original(authenticator, token)
+
+    monkeypatch.setattr(APIKeyAuthentication, "validate_api_token", authenticate)
+    request = APIRequestFactory().get(
+        f"{items(team)}{team.issue.id}/", HTTP_X_API_KEY=team.token.token, **headers(team.target)
+    )
+    set_use_read_replica(True)
+    try:
+        response = IssueDetailAPIEndpoint.as_view()(
+            request, slug=team.workspace.slug, project_id=team.project.id, pk=team.issue.id
+        )
+        assert response.status_code == 200 and calls == [False]
+        assert should_use_read_replica() is True
+    finally:
+        clear_read_replica_context()
+
+
+def test_join_audit_failure_rolls_back_membership_and_preferences(team, monkeypatch):
+    project = public_project(team)
+    monkeypatch.setattr(ImpersonationAudit.objects, "create", Mock(side_effect=IntegrityError("unavailable")))
+    response = client_for(team.token).post(join_url(team, project), {}, format="json", **headers(team.target))
+    assert response.status_code == 503
+    assert not ProjectMember.objects.filter(project=project, member=team.target).exists()
+    assert not db_models.ProjectUserProperty.objects.filter(project=project, user=team.target).exists()
+
+
+@pytest.mark.parametrize("family", ["states", "labels", "cycles", "modules", "estimates", "intake-issues"])
+def test_expanded_writes_never_borrow_the_admins_project_rights(team, family):
+    ProjectMember.objects.filter(project=team.project, member=team.target).update(role=5)
+    WorkspaceMember.objects.filter(workspace=team.workspace, member=team.target).update(role=5)
+    url = f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/{family}/"
+    data = {"issue": {"name": "No escalation"}} if family == "intake-issues" else {"name": "No escalation"}
+    response = client_for(team.token).post(url, data, format="json", **headers(team.target))
+    assert response.status_code == 403, response.content
+    assert not audit_for(response).succeeded
+
+
+def test_label_creation_preserves_existing_workspace_member_permission_for_project_guests(team):
+    # Plane's ProjectMemberPermission authorizes POST by workspace role, unlike
+    # the PATCH/DELETE rule. Delegation must not invent an elevated project role.
+    ProjectMember.objects.filter(project=team.project, member=team.target).update(role=5)
+    url = f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/labels/"
+    direct = client_for(APIToken.objects.create(user=team.target)).post(url, {"name": "Direct"}, format="json")
+    delegated = client_for(team.token).post(url, {"name": "Delegated"}, format="json", **headers(team.target))
+    assert direct.status_code == delegated.status_code == 201
+    assert Label.objects.get(id=delegated.data["id"]).created_by_id == team.target.id
+    assert ProjectMember.objects.get(project=team.project, member=team.target).role == 5
+
+
+def test_discovery_and_reads_cannot_escape_token_workspace_scope(team):
+    workspace = Workspace.objects.create(name="Scope", slug="token-scope", owner=team.admin)
+    team.token.workspace = workspace
+    team.token.save()
+    base = f"/api/v1/workspaces/{team.workspace.slug}/"
+    client = client_for(team.token)
+    assert client.get(f"{base}act-as-capabilities/").status_code == 403
+    assert client.get(f"{base}act-as-users/resolve/", {"email": team.target.email}).status_code == 403
+    assert client.get(comments(team), **headers(team.target)).status_code == 403
+
+
+def test_headerless_public_join_uses_real_user_even_when_delegation_disabled(team, settings):
+    settings.PLANEPLUS_ENABLE_ACT_AS = False
+    project = public_project(team)
+    token = APIToken.objects.create(user=team.target)
+    response = client_for(token).post(join_url(team, project), {}, format="json")
+    assert response.status_code == 201 and response.data["member_id"] == str(team.target.id)
+    assert AUDIT_HEADER not in response
     assert not ImpersonationAudit.objects.exists()
+
+
+@pytest.mark.parametrize("family", ["cycles", "modules"])
+def test_cycle_and_module_archive_and_restore_keep_resource_audit(team, family):
+    if family == "cycles":
+        obj = db_models.Cycle.objects.create(
+            project=team.project,
+            name="Finished cycle",
+            owned_by=team.target,
+            start_date=timezone.now() - timedelta(days=4),
+            end_date=timezone.now() - timedelta(days=2),
+        )
+    else:
+        obj = db_models.Module.objects.create(project=team.project, name="Finished module", status="completed")
+    url = f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/{family}/{obj.id}/archive/"
+    client = client_for(team.token)
+    archived = client.post(url, {}, format="json", **headers(team.target))
+    assert archived.status_code == 204, archived.content
+    assert audit_for(archived).resource_id == obj.id
+    obj.refresh_from_db()
+    assert obj.archived_at is not None and obj.updated_by_id == team.target.id
+    restore_url = (
+        f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/archived-{family}/{obj.id}/unarchive/"
+    )
+    restored = client.delete(restore_url, {}, format="json", **headers(team.other))
+    assert restored.status_code == 204, restored.content
+    obj.refresh_from_db()
+    assert obj.archived_at is None and obj.updated_by_id == team.other.id
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_public_join_creates_one_membership_and_two_audits(team):
+    project = public_project(team)
+    second_token = APIToken.objects.create(user=team.admin)
+    barrier = Barrier(2)
+
+    def join(token):
+        close_old_connections()
+        try:
+            barrier.wait(timeout=10)
+            response = client_for(token).post(join_url(team, project), {}, format="json", **headers(team.target))
+            return response.status_code, response.content
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(join, token) for token in (team.token, second_token)]
+        results = [future.result(timeout=30) for future in futures]
+    assert sorted(status for status, _ in results) == [200, 201], results
+    assert ProjectMember.objects.filter(project=project, member=team.target).count() == 1
+    assert db_models.ProjectUserProperty.objects.filter(project=project, user=team.target).count() == 1
+    assert ImpersonationAudit.objects.filter(project_id=project.id, action="project.join", succeeded=True).count() == 2
 
 
 @pytest.mark.django_db(transaction=True)

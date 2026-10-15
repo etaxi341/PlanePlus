@@ -10,6 +10,7 @@ from drf_spectacular.utils import OpenApiRequest, OpenApiResponse
 # Module imports
 from plane.app.permissions.project import ProjectEntityPermission
 from plane.api.views.base import BaseAPIView
+from plane.utils.act_as import content_bulk_authors
 from plane.db.models import Estimate, EstimatePoint, Project, Workspace
 from plane.api.serializers import EstimateSerializer, EstimatePointSerializer
 from plane.utils.openapi.decorators import estimate_docs, estimate_point_docs
@@ -29,6 +30,8 @@ from plane.utils.openapi import (
 
 class ProjectEstimateAPIEndpoint(BaseAPIView):
     permission_classes = [ProjectEntityPermission]
+    serializer_class = EstimateSerializer
+    model = Estimate
     model = Estimate
     serializer_class = EstimateSerializer
 
@@ -224,7 +227,7 @@ class EstimatePointListCreateAPIEndpoint(BaseAPIView):
             )
             for item in serializer.validated_data
         ]
-        created = EstimatePoint.objects.bulk_create(estimate_points)
+        created = EstimatePoint.objects.bulk_create(content_bulk_authors(estimate_points))
         return Response(
             self.serializer_class(created, many=True).data,
             status=status.HTTP_201_CREATED,

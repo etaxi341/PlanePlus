@@ -28,6 +28,7 @@ from plane.api.serializers import (
 )
 from plane.app.permissions import ProjectEntityPermission
 from plane.bgtasks.issue_activities_task import issue_activity
+from plane.utils.act_as import content_task_delay, content_bulk_authors
 from plane.db.models import (
     Issue,
     FileAsset,
@@ -228,7 +229,8 @@ class ModuleListCreateAPIEndpoint(BaseAPIView):
                 )
             serializer.save()
             # Send the model activity
-            model_activity.delay(
+            content_task_delay(
+                model_activity,
                 model_name="module",
                 model_id=str(serializer.instance.id),
                 requested_data=request.data,
@@ -486,7 +488,8 @@ class ModuleDetailAPIEndpoint(BaseAPIView):
             serializer.save()
 
             # Send the model activity
-            model_activity.delay(
+            content_task_delay(
+                model_activity,
                 model_name="module",
                 model_id=str(serializer.instance.id),
                 requested_data=request.data,
@@ -559,7 +562,8 @@ class ModuleDetailAPIEndpoint(BaseAPIView):
             )
 
         module_issues = list(ModuleIssue.objects.filter(module_id=pk).values_list("issue", flat=True))
-        issue_activity.delay(
+        content_task_delay(
+            issue_activity,
             type="module.activity.deleted",
             requested_data=json.dumps(
                 {
@@ -756,12 +760,15 @@ class ModuleIssueListCreateAPIEndpoint(BaseAPIView):
                     )
                 )
 
-        ModuleIssue.objects.bulk_create(record_to_create, batch_size=10, ignore_conflicts=True)
+        ModuleIssue.objects.bulk_create(content_bulk_authors(record_to_create), batch_size=10, ignore_conflicts=True)
 
-        ModuleIssue.objects.bulk_update(records_to_update, ["module"], batch_size=10)
+        ModuleIssue.objects.bulk_update(
+            content_bulk_authors(records_to_update, update=True), ["module", "updated_by"], batch_size=10,
+        )
 
         # Capture Issue Activity
-        issue_activity.delay(
+        content_task_delay(
+            issue_activity,
             type="module.activity.created",
             requested_data=json.dumps({"modules_list": str(issues)}),
             actor_id=str(self.request.user.id),
@@ -926,7 +933,8 @@ class ModuleIssueDetailAPIEndpoint(BaseAPIView):
 
         module_name = module_issue.module.name if module_issue.module is not None else ""
         module_issue.delete()
-        issue_activity.delay(
+        content_task_delay(
+            issue_activity,
             type="module.activity.deleted",
             requested_data=json.dumps({"module_id": str(module_id), "issues": [str(module_issue.issue_id)]}),
             actor_id=str(request.user.id),

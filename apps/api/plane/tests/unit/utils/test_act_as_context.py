@@ -19,6 +19,7 @@ pytestmark = pytest.mark.unit
 
 def context():
     return SimpleNamespace(
+        operation=SimpleNamespace(resource_type="issue"),
         actor=SimpleNamespace(id=uuid4()),
         target=SimpleNamespace(id=uuid4()),
         project=SimpleNamespace(id=uuid4()),

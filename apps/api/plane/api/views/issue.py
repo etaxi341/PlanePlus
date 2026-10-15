@@ -383,6 +383,11 @@ class IssueListCreateAPIEndpoint(BaseAPIView):
         )
 
         total_issue_queryset = Issue.issue_objects.filter(project_id=project_id, workspace__slug=slug)
+        if getattr(request, "act_as_context", None):
+            from plane.api.act_as_registry import visible_issues
+
+            issue_queryset = visible_issues(issue_queryset, request.user)
+            total_issue_queryset = visible_issues(total_issue_queryset, request.user)
 
         # Priority Ordering
         if order_by_param == "priority" or order_by_param == "-priority":
@@ -871,7 +876,8 @@ class IssueDetailAPIEndpoint(BaseAPIView):
             )
         current_instance = json.dumps(IssueSerializer(issue).data, cls=DjangoJSONEncoder)
         issue.delete()
-        issue_activity.delay(
+        content_task_delay(
+            issue_activity,
             type="issue.activity.deleted",
             requested_data=json.dumps({"issue_id": str(pk)}),
             actor_id=str(request.user.id),
@@ -1359,7 +1365,8 @@ class IssueLinkDetailAPIEndpoint(BaseAPIView):
         """
         issue_link = IssueLink.objects.get(workspace__slug=slug, project_id=project_id, issue_id=issue_id, pk=pk)
         current_instance = json.dumps(IssueLinkSerializer(issue_link).data, cls=DjangoJSONEncoder)
-        issue_activity.delay(
+        content_task_delay(
+            issue_activity,
             type="link.activity.deleted",
             requested_data=json.dumps({"link_id": str(pk)}),
             actor_id=str(request.user.id),
@@ -1432,9 +1439,14 @@ class IssueCommentListCreateAPIEndpoint(BaseAPIView):
 
         Retrieve all comments for a work item.
         """
+        queryset = self.get_queryset()
+        if getattr(request, "act_as_context", None) and ProjectMember.objects.filter(
+            project_id=project_id, member=request.user, is_active=True, role=5,
+        ).exists():
+            queryset = queryset.filter(Q(access="EXTERNAL") | Q(actor=request.user))
         return self.paginate(
             request=request,
-            queryset=(self.get_queryset()),
+            queryset=queryset,
             on_results=lambda issue_comments: (
                 IssueCommentSerializer(issue_comments, many=True, fields=self.fields, expand=self.expand).data
             ),
@@ -1694,7 +1706,8 @@ class IssueCommentDetailAPIEndpoint(BaseAPIView):
         issue_comment = IssueComment.objects.get(workspace__slug=slug, project_id=project_id, issue_id=issue_id, pk=pk)
         current_instance = json.dumps(IssueCommentSerializer(issue_comment).data, cls=DjangoJSONEncoder)
         issue_comment.delete()
-        issue_activity.delay(
+        content_task_delay(
+            issue_activity,
             type="comment.activity.deleted",
             requested_data=json.dumps({"comment_id": str(pk)}),
             actor_id=str(request.user.id),
@@ -2069,7 +2082,8 @@ class IssueAttachmentDetailAPIEndpoint(BaseAPIView):
         issue_attachment.deleted_at = timezone.now()
         issue_attachment.save()
 
-        issue_activity.delay(
+        content_task_delay(
+            issue_activity,
             type="attachment.activity.deleted",
             requested_data=None,
             actor_id=str(self.request.user.id),
@@ -2083,7 +2097,7 @@ class IssueAttachmentDetailAPIEndpoint(BaseAPIView):
 
         # Get the storage metadata
         if not issue_attachment.storage_metadata:
-            get_asset_object_metadata.delay(str(issue_attachment.id))
+            content_task_delay(get_asset_object_metadata, str(issue_attachment.id))
         issue_attachment.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -2207,7 +2221,8 @@ class IssueAttachmentDetailAPIEndpoint(BaseAPIView):
 
         # Send this activity only if the attachment is not uploaded before
         if not issue_attachment.is_uploaded:
-            issue_activity.delay(
+            content_task_delay(
+                issue_activity,
                 type="attachment.activity.created",
                 requested_data=None,
                 actor_id=str(self.request.user.id),
@@ -2221,11 +2236,12 @@ class IssueAttachmentDetailAPIEndpoint(BaseAPIView):
 
             # Update the attachment
             issue_attachment.is_uploaded = True
-            issue_attachment.created_by = request.user
+            if not getattr(request, "act_as_context", None):
+                issue_attachment.created_by = request.user
 
         # Get the storage metadata
         if not issue_attachment.storage_metadata:
-            get_asset_object_metadata.delay(str(issue_attachment.id))
+            content_task_delay(get_asset_object_metadata, str(issue_attachment.id))
         issue_attachment.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -2292,6 +2308,10 @@ class IssueSearchEndpoint(BaseAPIView):
             project__archived_at__isnull=True,
             workspace__slug=slug,
         )
+        if getattr(request, "act_as_context", None):
+            from plane.api.act_as_registry import visible_issues
+
+            issues = visible_issues(issues, request.user)
 
         # Apply project filter if not searching across workspace
         if workspace_search == "false" and project_id:
@@ -2384,10 +2404,16 @@ class IssueRelationListCreateAPIEndpoint(BaseAPIView):
         Retrieve all relationships for a work item organized by relation type.
         Returns a structured response with relations grouped by type.
         """
-        relations = IssueRelation.objects.filter(
+        relation_queryset = IssueRelation.objects.filter(
             Q(issue_id=issue_id) | Q(related_issue_id=issue_id),
             workspace__slug=slug,
-        ).values(
+        )
+        if getattr(request, "act_as_context", None):
+            from plane.api.act_as_registry import visible_issues
+
+            visible = visible_issues(Issue.issue_objects.filter(workspace__slug=slug), request.user).values("id")
+            relation_queryset = relation_queryset.filter(issue_id__in=visible, related_issue_id__in=visible)
+        relations = relation_queryset.values(
             "relation_type",
             "issue_id",
             "related_issue_id",
@@ -2557,7 +2583,8 @@ class IssueRelationListCreateAPIEndpoint(BaseAPIView):
             ignore_conflicts=True,
         )
 
-        issue_activity.delay(
+        content_task_delay(
+            issue_activity,
             type="issue_relation.activity.created",
             requested_data=json.dumps(request.data, cls=DjangoJSONEncoder),
             actor_id=str(request.user.id),

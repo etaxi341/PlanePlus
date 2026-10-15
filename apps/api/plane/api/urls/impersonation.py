@@ -7,10 +7,28 @@ from django.urls import path
 from plane.api.views.impersonation import (
     ImpersonationAuditDetailEndpoint,
     WorkItemImpersonationProvenanceEndpoint,
+    ActAsCapabilitiesEndpoint,
+    ActAsUserResolveEndpoint,
+    PublicProjectJoinEndpoint,
 )
 
 
 urlpatterns = [
+    path(
+        "workspaces/<str:slug>/act-as-capabilities/",
+        ActAsCapabilitiesEndpoint.as_view(http_method_names=["get"]),
+        name="act-as-capabilities",
+    ),
+    path(
+        "workspaces/<str:slug>/act-as-users/resolve/",
+        ActAsUserResolveEndpoint.as_view(http_method_names=["get"]),
+        name="act-as-user-resolve",
+    ),
+    path(
+        "workspaces/<str:slug>/projects/<uuid:project_id>/join/",
+        PublicProjectJoinEndpoint.as_view(http_method_names=["post"]),
+        name="public-project-join",
+    ),
     path(
         "workspaces/<str:slug>/act-as-audit/<uuid:audit_id>/",
         ImpersonationAuditDetailEndpoint.as_view(http_method_names=["get"]),

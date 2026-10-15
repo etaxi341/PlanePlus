@@ -7,9 +7,21 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.response import Response
 from django.db.models import Q
 
-from plane.api.act_as import is_instance_admin, is_workspace_admin
+from django.conf import settings
+from django.db import transaction
+from plane.api.act_as import is_instance_admin, is_workspace_admin, authorize_act_as_actor, act_as_content, ActAsError
 from plane.app.permissions import ROLE
-from plane.db.models import ImpersonationAudit, Issue, IssueComment, ProjectMember, Workspace, WorkspaceMember
+from plane.db.models import (
+    ImpersonationAudit,
+    Issue,
+    IssueComment,
+    Project,
+    ProjectMember,
+    ProjectUserProperty,
+    User,
+    Workspace,
+    WorkspaceMember,
+)
 from .base import BaseAPIView
 
 
@@ -60,6 +72,10 @@ def check_provenance_access(request, workspace, project_id, issue_id):
         .select_related("project")
         .first()
     )
+    if issue_id is None:
+        if member is None or member.role < ROLE.MEMBER.value:
+            raise PermissionDenied()
+        return member
     issue = Issue.issue_objects.filter(id=issue_id, project_id=project_id, workspace=workspace).first()
     if member is None or issue is None:
         raise PermissionDenied()
@@ -90,6 +106,7 @@ class ImpersonationAuditDetailEndpoint(BaseAPIView):
     """Immutable provenance by the server-generated ID returned on writes."""
 
     serializer_class = ImpersonationProvenanceSerializer
+    use_read_replica = False
 
     def get(self, request, slug, audit_id):
         workspace = Workspace.objects.filter(slug=slug).first()
@@ -111,6 +128,7 @@ class ImpersonationAuditDetailEndpoint(BaseAPIView):
 
 class WorkItemImpersonationProvenanceEndpoint(BaseAPIView):
     serializer_class = ImpersonationProvenanceSerializer
+    use_read_replica = False
 
     def get(self, request, slug, project_id, issue_id):
         workspace = Workspace.objects.filter(slug=slug).first()
@@ -133,3 +151,184 @@ class WorkItemImpersonationProvenanceEndpoint(BaseAPIView):
             queryset=queryset,
             on_results=lambda entries: ImpersonationProvenanceSerializer(entries, many=True).data,
         )
+
+
+class ActAsCapabilitiesSerializer(serializers.Serializer):
+    version = serializers.IntegerField(read_only=True)
+    enabled = serializers.BooleanField(read_only=True)
+    user_header = serializers.CharField(read_only=True)
+    reason_header = serializers.CharField(read_only=True)
+    audit_header = serializers.CharField(read_only=True)
+    reads_as_target = serializers.BooleanField(read_only=True)
+    public_project_join = serializers.BooleanField(read_only=True)
+    operations = serializers.ListField(child=serializers.DictField(), read_only=True)
+
+
+class ActAsUserResolveSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+    is_bot = serializers.BooleanField(read_only=True)
+    workspace_id = serializers.UUIDField(read_only=True)
+    workspace_member = serializers.DictField(read_only=True)
+    eligible = serializers.BooleanField(read_only=True)
+
+
+class PublicProjectJoinSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    project_id = serializers.UUIDField(read_only=True)
+    member_id = serializers.UUIDField(read_only=True)
+    role = serializers.IntegerField(read_only=True)
+    joined = serializers.BooleanField(read_only=True)
+
+
+class ActAsCapabilitiesEndpoint(BaseAPIView):
+    serializer_class = ActAsCapabilitiesSerializer
+    use_read_replica = False
+
+    def get(self, request, slug):
+        authorize_act_as_actor(request, slug)
+        from plane.api.act_as_registry import capabilities
+        from django.urls import get_resolver, URLPattern, URLResolver
+
+        routes = {}
+
+        def walk(patterns, prefix=""):
+            for pattern in patterns:
+                route = prefix + str(pattern.pattern)
+                if isinstance(pattern, URLResolver):
+                    walk(pattern.url_patterns, route)
+                elif isinstance(pattern, URLPattern) and route.startswith("api/v1/"):
+                    cls = getattr(pattern.callback, "cls", None)
+                    if cls:
+                        methods = pattern.callback.initkwargs.get("http_method_names", cls.http_method_names)
+                        for method in methods:
+                            routes.setdefault((cls.__name__, method.upper()), []).append("/" + route)
+
+        walk(get_resolver().url_patterns)
+        operations = capabilities()
+        for operation in operations:
+            operation["paths"] = routes.get((operation.pop("view"), operation["method"]), [])
+        operations = [operation for operation in operations if operation["paths"]]
+        return Response(
+            {
+                "version": 2,
+                "enabled": settings.PLANEPLUS_ENABLE_ACT_AS,
+                "user_header": "X-PlanePlus-Act-As-User",
+                "reason_header": "X-PlanePlus-Act-As-Reason",
+                "audit_header": "X-PlanePlus-Act-As-Audit-Id",
+                "reads_as_target": True,
+                "public_project_join": True,
+                "operations": operations,
+            }
+        )
+
+
+class ActAsUserResolveEndpoint(BaseAPIView):
+    serializer_class = ActAsUserResolveSerializer
+    use_read_replica = False
+
+    def get(self, request, slug):
+        workspace = authorize_act_as_actor(request, slug)
+        email = request.query_params.get("email", "").strip()
+        if not email or len(email) > 254:
+            raise ActAsError("act_as_invalid_email", "An email query parameter is required.", 400)
+        users = list(
+            User.objects.filter(
+                email__iexact=email,
+                member_workspace__workspace=workspace,
+                member_workspace__deleted_at__isnull=True,
+            ).distinct()[:2]
+        )
+        if not users:
+            raise NotFound({"error_code": "act_as_user_not_found"})
+        if len(users) != 1:
+            raise ActAsError("act_as_ambiguous_user", "The email does not uniquely identify a workspace user.", 409)
+        user = users[0]
+        member = WorkspaceMember.objects.get(workspace=workspace, member=user)
+        return Response(
+            {
+                "id": str(user.id),
+                "email": user.email,
+                "is_active": user.is_active,
+                "is_bot": user.is_bot,
+                "workspace_id": str(workspace.id),
+                "workspace_member": {"is_active": member.is_active, "role": member.role},
+                "eligible": user.is_active and not user.is_bot and member.is_active,
+            }
+        )
+
+
+class PublicProjectJoinEndpoint(BaseAPIView):
+    """Join only yourself (or a validated delegate), never assign arbitrary roles."""
+
+    serializer_class = PublicProjectJoinSerializer
+
+    @act_as_content("project.join", "project_member", set(), scope="join")
+    def post(self, request, slug, project_id):
+        if request.data:
+            raise ActAsError("act_as_invalid_payload", "Public join accepts an empty JSON object only.", 400)
+        with transaction.atomic():
+            # Serialize concurrent joins and project network/archive changes.
+            project = Project.objects.select_for_update().filter(id=project_id, workspace__slug=slug).first()
+            if project is None or project.network != 2 or project.archived_at is not None:
+                raise ActAsError("act_as_public_project_required", "Only active public projects can be joined.")
+            member = (
+                WorkspaceMember.objects.select_for_update()
+                .filter(
+                    workspace=project.workspace,
+                    member=request.user,
+                    is_active=True,
+                    member__is_active=True,
+                    member__is_bot=False,
+                )
+                .first()
+            )
+            if member is None:
+                raise PermissionDenied()
+            existing = (
+                ProjectMember.all_objects.filter(project=project, member=request.user).order_by("-created_at").first()
+            )
+            if existing is not None:
+                if existing.deleted_at is not None or not existing.is_active:
+                    raise ActAsError(
+                        "act_as_membership_inactive", "An administrator must restore a removed membership."
+                    )
+                return Response(
+                    {
+                        "id": str(existing.id),
+                        "project_id": str(project.id),
+                        "member_id": str(request.user.id),
+                        "role": existing.role,
+                        "joined": False,
+                    }
+                )
+            # A workspace admin does NOT become project admin through auto-join.
+            membership = ProjectMember(
+                project=project,
+                workspace=project.workspace,
+                member=request.user,
+                role=min(member.role, 15),
+                created_by=request.user,
+                updated_by=request.user,
+            )
+            # The existing ProjectMember.save unconditionally creates preferences;
+            # use Plane's bulk-join pattern so an existing preference cannot break
+            # a legitimate first membership. The project lock serializes joins.
+            ProjectMember.objects.bulk_create([membership])
+            ProjectUserProperty.objects.get_or_create(
+                project=project,
+                workspace=project.workspace,
+                user=request.user,
+                defaults={"created_by": request.user, "updated_by": request.user},
+            )
+            return Response(
+                {
+                    "id": str(membership.id),
+                    "project_id": str(project.id),
+                    "member_id": str(request.user.id),
+                    "role": membership.role,
+                    "joined": True,
+                },
+                status=201,
+            )

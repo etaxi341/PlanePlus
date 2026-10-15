@@ -26,6 +26,7 @@ from plane.db.models import (
     IssueLink,
     IssueType,
     Project,
+    ProjectMember,
     User,
     Workspace,
     WorkspaceMember,
@@ -53,6 +54,7 @@ class ContentOperation:
     action: str
     resource_type: str
     fields: frozenset[str]
+    scope: str = "project"
 
 
 @dataclass(frozen=True)
@@ -60,7 +62,7 @@ class ActAsContext:
     actor: User
     target: User
     workspace: Workspace
-    project: Project
+    project: Project | None
     operation: ContentOperation
     issue_id: UUID | None
     resource_id: UUID | None
@@ -84,9 +86,9 @@ class ContentRequest:
         return getattr(self.original_request, name)
 
 
-def act_as_content(action, resource_type, fields):
+def act_as_content(action, resource_type, fields, scope="project"):
     """Explicit extension point. Adding a handler requires reviewing its scope/permissions."""
-    operation = ContentOperation(action, resource_type, frozenset(fields))
+    operation = ContentOperation(action, resource_type, frozenset(fields), scope)
 
     def decorate(handler):
         @wraps(handler)
@@ -98,7 +100,7 @@ def act_as_content(action, resource_type, fields):
             original = view.request
             try:
                 view.request = proxy
-                with content_author(context):
+                with content_author(context if request.method not in SAFE_METHODS else None):
                     return handler(view, proxy, *args, **kwargs)
             finally:
                 view.request = original
@@ -141,6 +143,7 @@ WORK_ITEM_FIELDS = {
     "sort_order",
     "external_source",
     "external_id",
+    "archived_at",
 }
 COMMENT_FIELDS = {"comment_html", "comment_json", "access", "external_source", "external_id"}
 
@@ -162,21 +165,27 @@ def is_workspace_admin(user, workspace):
     ).exists()
 
 
-def resolve_act_as(request, view, operation):
-    """Authenticate first, authorize the actor, then resolve and scope the target."""
-    if not settings.PLANEPLUS_ENABLE_ACT_AS:
-        raise ActAsError("act_as_disabled", "API impersonation is disabled.")
+def authorize_act_as_actor(request, slug):
+    """Also used for administrator-only discovery; never accepts a claimed identity."""
     authenticator = request.successful_authenticator
     token = getattr(authenticator, "api_token", None)
     if not isinstance(authenticator, APIKeyAuthentication) or token is None or request.user.is_bot:
         raise ActAsError("act_as_api_key_required", "An administrator's personal API key is required.")
     if token.user_type != 0 or token.is_service:
         raise ActAsError("act_as_api_key_required", "Bot and service tokens cannot impersonate users.")
-    workspace = Workspace.objects.filter(slug=view.kwargs.get("slug")).first()
+    workspace = Workspace.objects.filter(slug=slug).first()
     if workspace is None or (token.workspace_id is not None and token.workspace_id != workspace.id):
         raise ActAsError("act_as_workspace_forbidden", "The API key cannot impersonate in this workspace.")
     if not is_instance_admin(request) and not is_workspace_admin(request.user, workspace):
         raise ActAsError("act_as_admin_required", "Instance or workspace administrator permission is required.")
+    return workspace
+
+
+def resolve_act_as(request, view, operation):
+    """Authenticate first, authorize the actor, then resolve and scope the target."""
+    if not settings.PLANEPLUS_ENABLE_ACT_AS:
+        raise ActAsError("act_as_disabled", "API impersonation is disabled.")
+    workspace = authorize_act_as_actor(request, view.kwargs.get("slug"))
     if operation is None:
         raise ActAsError("act_as_operation_not_supported", "Impersonation is not supported for this operation.")
     reason = request.headers.get(REASON_HEADER, "")
@@ -194,13 +203,23 @@ def resolve_act_as(request, view, operation):
     membership = WorkspaceMember.objects.filter(workspace=workspace, member=target, is_active=True).first()
     if membership is None:
         raise ActAsError("act_as_target_not_workspace_member", "The target is not an active workspace member.")
+    project_id = view.kwargs.get("project_id")
+    if operation.resource_type == "project":
+        project_id = project_id or view.kwargs.get("pk")
     project = Project.objects.filter(
-        id=view.kwargs.get("project_id"),
+        id=project_id,
         workspace=workspace,
         archived_at__isnull=True,
     ).first()
-    if project is None:
+    if project is None and operation.scope != "workspace":
         raise ActAsError("act_as_resource_forbidden", "The resource is not available in this workspace.")
+    if project is not None and operation.scope != "join":
+        project_member = ProjectMember.objects.filter(project=project, member=target, is_active=True).first()
+        public_project_read = (
+            request.method in SAFE_METHODS and operation.resource_type == "project" and project.network == 2
+        )
+        if project_member is None and not public_project_read:
+            raise ActAsError("act_as_target_permission_denied", "The target is not an active project member.")
 
     # Existing permission classes run against this facade after resolution.
     # Bind ALL URL resources before a handler can use a less-scoped lookup.
@@ -209,7 +228,11 @@ def resolve_act_as(request, view, operation):
     if operation.resource_type == "issue" and resource_id:
         issue_id = resource_id
     if issue_id:
-        issue = Issue.issue_objects.filter(id=issue_id, workspace=workspace, project=project).first()
+        include_archived = request.method == "PATCH" and "archived_at" in request.data
+        issue_manager = (
+            Issue.objects if operation.resource_type == "intake_issue" or include_archived else Issue.issue_objects
+        )
+        issue = issue_manager.filter(id=issue_id, workspace=workspace, project=project).first()
         if issue is None:
             raise ActAsError("act_as_resource_forbidden", "The work item is not available in this project.")
         project_membership = project.project_projectmember.filter(member=target, is_active=True).first()
@@ -230,7 +253,7 @@ def resolve_act_as(request, view, operation):
         ).first()
         if resource is None:
             raise ActAsError("act_as_resource_forbidden", "The resource is not available on this work item.")
-        if operation.resource_type == "issue_comment":
+        if operation.resource_type == "issue_comment" and request.method not in SAFE_METHODS:
             # Match the app's normal comment editing rule: creator, project
             # admin, or workspace admin who is also an active project member.
             project_admin = project.project_projectmember.filter(
@@ -241,6 +264,17 @@ def resolve_act_as(request, view, operation):
             if resource.created_by_id != target.id and not project_admin and membership.role != ROLE.ADMIN.value:
                 raise ActAsError("act_as_target_permission_denied", "The target cannot edit this comment.")
 
+    if request.method in SAFE_METHODS:
+        from plane.api.act_as_registry import validate_read_scope
+
+        validate_read_scope(request, view, target, project, operation)
+        resource_id = (
+            resource_id
+            or view.kwargs.get("estimate_point_id")
+            or view.kwargs.get("cycle_id")
+            or view.kwargs.get("module_id")
+        )
+        return ActAsContext(request.user, target, workspace, project, operation, issue_id, resource_id, "")
     if not isinstance(request.data, dict):
         raise ActAsError("act_as_invalid_payload", "A JSON object is required.", 400)
     forbidden_fields = set(request.data) - operation.fields
@@ -250,6 +284,9 @@ def resolve_act_as(request, view, operation):
             "Unsupported fields for impersonation: " + ", ".join(sorted(forbidden_fields)),
             400,
         )
+    from plane.api.act_as_registry import validate_write_scope
+
+    validate_write_scope(request, view, target, workspace, project, operation)
     if operation.resource_type == "issue" and request.data.get("type_id") is not None:
         issue_type_id = parse_uuid(request.data["type_id"])
         if (
@@ -270,7 +307,12 @@ def resolve_act_as(request, view, operation):
         project,
         operation,
         issue_id,
-        resource_id,
+        resource_id
+        or view.kwargs.get("estimate_point_id")
+        or view.kwargs.get("cycle_id")
+        or view.kwargs.get("module_id")
+        or view.kwargs.get("estimate_id")
+        or request.data.get("estimate_id"),
         base_host(request=request, is_app=True),
     )
 
@@ -302,7 +344,7 @@ def append_audit(request, *, audit_id, response_status, context=None, actor=None
         requested_user=request.headers.get(USER_HEADER, "").replace("\x00", "\\0")[:64],
         token_id=token.id if token is not None else None,
         workspace_id=workspace_id,
-        project_id=context.project.id if context else parse_uuid(url_kwargs.get("project_id")),
+        project_id=context.project.id if context and context.project else parse_uuid(url_kwargs.get("project_id")),
         issue_id=context.issue_id if context else parse_uuid(url_kwargs.get("issue_id")),
         resource_id=context.resource_id if context else parse_uuid(url_kwargs.get("pk")),
         resource_type=operation.resource_type if operation else "",
@@ -310,25 +352,47 @@ def append_audit(request, *, audit_id, response_status, context=None, actor=None
         method=request.method,
         path=request.path,
         reason=request.headers.get(REASON_HEADER, "").replace("\x00", "\\0")[:500],
-        succeeded=200 <= response_status < 300,
+        succeeded=200 <= response_status < 300 or (response_status == 302 and request.method in SAFE_METHODS),
         response_status=response_status,
         error_code=error_code,
     )
 
 
 class ActAsAPIMixin:
-    """DRF lifecycle integration. Normal and read requests take the original path."""
+    """DRF lifecycle integration. Headerless requests take the original path."""
 
     act_as_context = None
 
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        from plane.api.act_as_registry import REGISTRY
+
+        for (module, name, method), operation in REGISTRY.items():
+            if (module, name) != (cls.__module__, cls.__name__) or method == "HEAD":
+                continue
+            handler = getattr(cls, method.lower(), None)
+            if handler is not None and not getattr(handler, "act_as_operation", None):
+                setattr(
+                    cls,
+                    method.lower(),
+                    act_as_content(
+                        operation.action,
+                        operation.resource_type,
+                        operation.fields,
+                        operation.scope,
+                    )(handler),
+                )
+
     def perform_authentication(self, request):
         super().perform_authentication(request)
-        if request.method in SAFE_METHODS or not has_act_as_headers(request):
+        if request.method == "OPTIONS" or not has_act_as_headers(request):
             return
         self.act_as_actor = request.user
         self.act_as_token = getattr(request.successful_authenticator, "api_token", None)
         handler = getattr(self, request.method.lower(), None)
         operation = getattr(handler, "act_as_operation", None)
+        if request.method.lower() not in self.http_method_names:
+            operation = None
         request.act_as_operation = operation
         request.act_as_url_kwargs = self.kwargs
         self.act_as_context = resolve_act_as(request, self, operation)
@@ -352,18 +416,41 @@ class ActAsAPIMixin:
         return super().handle_exception(exc)
 
     def dispatch(self, request, *args, **kwargs):
-        if request.method in SAFE_METHODS or not has_act_as_headers(request):
+        if request.method == "OPTIONS" or not has_act_as_headers(request):
             return super().dispatch(request, *args, **kwargs)
+        from plane.utils.core import set_use_read_replica, should_use_read_replica
+
+        previous = should_use_read_replica()
+        set_use_read_replica(False)
+        try:
+            return self._dispatch_act_as(request, *args, **kwargs)
+        finally:
+            set_use_read_replica(previous)
+
+    def _dispatch_act_as(self, request, *args, **kwargs):
+        # Revocations and permissions must not be checked against a lagging
+        # replica, even on GET. Success and audit must observe the same primary.
         audit_id = uuid4()
         try:
             with transaction.atomic():
                 response = super().dispatch(request, *args, **kwargs)
                 context = self.act_as_context
-                if 200 <= response.status_code < 300 and context is not None:
+                successful_redirect = (
+                    response.status_code == 302
+                    and request.method in SAFE_METHODS
+                    and context is not None
+                    and context.operation.resource_type == "file_asset"
+                )
+                if (200 <= response.status_code < 300 or successful_redirect) and context is not None:
                     # Validate serialization before committing content + audit.
-                    response.render()
-                    resource_id = parse_uuid(response.data.get("id"))
-                    if resource_id is None:
+                    if hasattr(response, "render"):
+                        response.render()
+                    data = getattr(response, "data", None)
+                    resource_id = parse_uuid(data.get("id") or data.get("asset_id")) if isinstance(data, dict) else None
+                    resource_id = resource_id or context.resource_id
+                    if resource_id is None and request.method not in SAFE_METHODS:
+                        resource_id = context.issue_id or (context.project.id if context.project else None)
+                    if resource_id is None and request.method not in SAFE_METHODS:
                         raise RuntimeError("Act-as content response is missing its resource ID")
                     context = replace(
                         context,
@@ -430,7 +517,7 @@ class ActAsBoundaryMiddleware:
         return self.get_response(request)
 
     def process_view(self, request, callback, callback_args, callback_kwargs):
-        if request.method in SAFE_METHODS or not has_act_as_headers(request):
+        if request.method == "OPTIONS" or not has_act_as_headers(request):
             return None
         view_class = getattr(callback, "cls", None) or getattr(callback, "view_class", None)
         if (

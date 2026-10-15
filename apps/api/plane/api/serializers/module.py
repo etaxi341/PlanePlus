@@ -7,6 +7,7 @@ from rest_framework import serializers
 
 # Module imports
 from .base import BaseSerializer
+from plane.utils.act_as import get_act_as_context
 from plane.db.models import (
     User,
     Module,
@@ -139,6 +140,9 @@ class ModuleUpdateSerializer(ModuleCreateSerializer):
 
     def update(self, instance, validated_data):
         members = validated_data.pop("members", None)
+        context = get_act_as_context()
+        created_by = context.target if context else instance.created_by
+        updated_by = context.target if context else instance.updated_by
         module_name = validated_data.get("name")
         if module_name:
             # Lookup for the module name in the module table for that project
@@ -154,8 +158,8 @@ class ModuleUpdateSerializer(ModuleCreateSerializer):
                         member_id=str(member),
                         project=instance.project,
                         workspace=instance.project.workspace,
-                        created_by=instance.created_by,
-                        updated_by=instance.updated_by,
+                        created_by=created_by,
+                        updated_by=updated_by,
                     )
                     for member in members
                 ],

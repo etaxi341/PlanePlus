@@ -75,7 +75,11 @@ class SoftDeleteModel(models.Model):
             self.deleted_at = timezone.now()
             self.save(using=using)
 
-            soft_delete_related_objects.delay(self._meta.app_label, self._meta.model_name, self.pk, using=using)
+            from plane.utils.act_as import content_task_delay
+
+            content_task_delay(
+                soft_delete_related_objects, self._meta.app_label, self._meta.model_name, self.pk, using=using,
+            )
 
         else:
             # Perform hard delete if soft deletion is not enabled

@@ -44,12 +44,39 @@ def content_user_for_model(instance):
         return None
     # Fail closed if a future handler adds identity/administration writes, or
     # accidentally saves content belonging to a different project/workspace.
+    resource = context.operation.resource_type
+    allowed = (
+        set(CONTENT_MODELS)
+        if resource in {"issue", "issue_comment", "issue_link"}
+        else {
+            "state": {"db.state"},
+            "label": {"db.label"},
+            "cycle": {"db.cycle"},
+            "module": {"db.module", "db.modulemember"},
+            "cycle_issue": {"db.cycleissue"},
+            "module_issue": {"db.moduleissue"},
+            "project": {"db.project", "db.projectidentifier"},
+            "estimate": {"db.estimate", "db.estimatepoint", "db.project"},
+            "estimate_point": {"db.estimatepoint"},
+            "issue_relation": {"db.issuerelation"},
+            "file_asset": {"db.fileasset"},
+            "intake_issue": set(CONTENT_MODELS) | {"db.intakeissue"},
+            "project_member": {"db.projectmember", "db.projectuserproperty"},
+        }.get(resource, set())
+    )
+    model = instance._meta.label_lower
+    project_id = instance.id if model == "db.project" else getattr(instance, "project_id", None)
     if (
-        instance._meta.label_lower not in CONTENT_MODELS
-        or str(getattr(instance, "project_id", None)) != str(context.project.id)
+        model not in allowed
+        or context.project is None
+        or str(project_id) != str(context.project.id)
         or str(getattr(instance, "workspace_id", None)) != str(context.workspace.id)
     ):
         raise PermissionDenied("This model cannot be written using act-as.")
+    if resource == "project_member":
+        member_id = getattr(instance, "member_id", None) or getattr(instance, "user_id", None)
+        if member_id != context.target.id:
+            raise PermissionDenied("Public join cannot change another user's membership.")
     return context.target
 
 
@@ -67,3 +94,14 @@ def content_task_delay(task, *args, **kwargs):
     # Broker errors are logged by Django, not reported as an uncommitted write
     # that clients might retry and duplicate. Delivery uses Plane's existing tasks.
     transaction.on_commit(lambda: task.delay(*args, **kwargs), robust=True)
+
+
+def content_bulk_authors(objects, update=False):
+    """Django bulk operations bypass save(); retain scoped attribution there too."""
+    if get_act_as_context() is not None:
+        for obj in objects:
+            user = content_user_for_model(obj)
+            if not update:
+                obj.created_by = user
+            obj.updated_by = user
+    return objects
