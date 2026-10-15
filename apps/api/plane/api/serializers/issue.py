@@ -31,6 +31,7 @@ from plane.utils.content_validator import (
     validate_html_content,
     validate_binary_data,
 )
+from plane.utils.act_as import get_act_as_context
 
 from .base import BaseSerializer
 from .cycle import CycleLiteSerializer, CycleSerializer
@@ -254,6 +255,10 @@ class IssueSerializer(BaseSerializer):
         workspace_id = instance.workspace_id
         created_by_id = instance.created_by_id
         updated_by_id = instance.updated_by_id
+        act_as = get_act_as_context()
+        if act_as is not None:
+            created_by_id = act_as.target.id
+            updated_by_id = act_as.target.id
 
         if assignees is not None:
             IssueAssignee.objects.filter(issue=instance).delete()

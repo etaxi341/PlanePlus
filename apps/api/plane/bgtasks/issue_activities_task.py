@@ -4,6 +4,7 @@
 
 # Python imports
 import json
+from functools import partial
 
 
 # Third Party imports
@@ -84,11 +85,13 @@ def track_description(
     actor_id,
     issue_activities,
     epoch,
+    preserve_history=False,
 ):
     if current_instance.get("description_html") != requested_data.get("description_html"):
         last_activity = IssueActivity.objects.filter(issue_id=issue_id).order_by("-created_at").first()
         if (
-            last_activity is not None
+            not preserve_history
+            and last_activity is not None
             and last_activity.field == "description"
             and actor_id == str(last_activity.actor_id)
         ):
@@ -600,13 +603,14 @@ def update_issue_activity(
     actor_id,
     issue_activities,
     epoch,
+    preserve_history=False,
 ):
     ISSUE_ACTIVITY_MAPPER = {
         "name": track_name,
         "parent_id": track_parent,
         "priority": track_priority,
         "state_id": track_state,
-        "description_html": track_description,
+        "description_html": partial(track_description, preserve_history=preserve_history),
         "target_date": track_target_date,
         "start_date": track_start_date,
         "label_ids": track_labels,
@@ -1513,6 +1517,7 @@ def issue_activity(
     notification=False,
     origin=None,
     intake=None,
+    preserve_history=False,
 ):
     try:
         issue_activities = []
@@ -1539,7 +1544,7 @@ def issue_activity(
 
         ACTIVITY_MAPPER = {
             "issue.activity.created": create_issue_activity,
-            "issue.activity.updated": update_issue_activity,
+            "issue.activity.updated": partial(update_issue_activity, preserve_history=preserve_history),
             "issue.activity.deleted": delete_issue_activity,
             "comment.activity.created": create_comment_activity,
             "comment.activity.updated": update_comment_activity,

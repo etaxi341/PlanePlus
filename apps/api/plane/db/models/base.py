@@ -12,6 +12,7 @@ from crum import get_current_user
 
 # Module imports
 from ..mixins import AuditModel
+from plane.utils.act_as import content_user_for_model
 
 
 class BaseModel(AuditModel):
@@ -21,7 +22,13 @@ class BaseModel(AuditModel):
         abstract = True
 
     def save(self, *args, created_by_id=None, disable_auto_set_user=False, **kwargs):
-        if not disable_auto_set_user:
+        content_user = content_user_for_model(self)
+        if content_user is not None:
+            field = "created_by" if self._state.adding else "updated_by"
+            setattr(self, field, content_user)
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {field}
+        elif not disable_auto_set_user:
             # Check if created_by_id is provided
             if created_by_id:
                 self.created_by_id = created_by_id

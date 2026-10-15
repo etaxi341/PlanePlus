@@ -137,6 +137,7 @@ services:
     environment:
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-0.0.0.0/0}
       SWG_RESTSERVICE_URL: ${SWG_RESTSERVICE_URL:-https://services.swg.de/api/Auth}
+      PLANEPLUS_ENABLE_ACT_AS: ${PLANEPLUS_ENABLE_ACT_AS:-0}
     depends_on:
       - planeplus-db
       - planeplus-redis

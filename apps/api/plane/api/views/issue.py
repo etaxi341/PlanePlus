@@ -159,6 +159,8 @@ from plane.utils.openapi import (
     WORKSPACE_NOT_FOUND_RESPONSE,
 )
 from plane.bgtasks.work_item_link_task import crawl_work_item_link_title
+from plane.api.act_as import act_as_content, WORK_ITEM_FIELDS, COMMENT_FIELDS
+from plane.utils.act_as import content_task_delay
 
 
 def user_has_issue_permission(user_id, project_id, issue=None, allowed_roles=None, allow_creator=True):
@@ -446,6 +448,7 @@ class IssueListCreateAPIEndpoint(BaseAPIView):
             409: EXTERNAL_ID_EXISTS_RESPONSE,
         },
     )
+    @act_as_content("work_item.create", "issue", WORK_ITEM_FIELDS)
     def post(self, request, slug, project_id):
         """Create work item
 
@@ -496,7 +499,8 @@ class IssueListCreateAPIEndpoint(BaseAPIView):
             issue.save(update_fields=["created_at", "created_by"])
 
             # Track the issue
-            issue_activity.delay(
+            content_task_delay(
+                issue_activity,
                 type="issue.activity.created",
                 requested_data=json.dumps(self.request.data, cls=DjangoJSONEncoder),
                 actor_id=str(request.user.id),
@@ -509,7 +513,8 @@ class IssueListCreateAPIEndpoint(BaseAPIView):
             )
 
             # Send the model activity
-            model_activity.delay(
+            content_task_delay(
+                model_activity,
                 model_name="issue",
                 model_id=str(serializer.data["id"]),
                 requested_data=request.data,
@@ -768,6 +773,7 @@ class IssueDetailAPIEndpoint(BaseAPIView):
             409: EXTERNAL_ID_EXISTS_RESPONSE,
         },
     )
+    @act_as_content("work_item.update", "issue", WORK_ITEM_FIELDS)
     def patch(self, request, slug, project_id, pk):
         """Update work item
 
@@ -804,7 +810,8 @@ class IssueDetailAPIEndpoint(BaseAPIView):
                 )
 
             serializer.save()
-            issue_activity.delay(
+            content_task_delay(
+                issue_activity,
                 type="issue.activity.updated",
                 requested_data=requested_data,
                 actor_id=str(request.user.id),
@@ -816,7 +823,8 @@ class IssueDetailAPIEndpoint(BaseAPIView):
                 origin=base_host(request=request, is_app=True),
             )
             # Send the model activity for webhook dispatch
-            model_activity.delay(
+            content_task_delay(
+                model_activity,
                 model_name="issue",
                 model_id=str(pk),
                 requested_data=request.data,
@@ -1187,6 +1195,7 @@ class IssueLinkListCreateAPIEndpoint(BaseAPIView):
             404: ISSUE_NOT_FOUND_RESPONSE,
         },
     )
+    @act_as_content("work_item_link.create", "issue_link", {"title", "url"})
     def post(self, request, slug, project_id, issue_id):
         """Create issue link
 
@@ -1196,11 +1205,12 @@ class IssueLinkListCreateAPIEndpoint(BaseAPIView):
         serializer = IssueLinkCreateSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save(project_id=project_id, issue_id=issue_id)
-            crawl_work_item_link_title.delay(serializer.instance.id, serializer.instance.url)
+            content_task_delay(crawl_work_item_link_title, serializer.instance.id, serializer.instance.url)
             link = IssueLink.objects.get(pk=serializer.instance.id)
             link.created_by_id = request.data.get("created_by", request.user.id)
             link.save(update_fields=["created_by"])
-            issue_activity.delay(
+            content_task_delay(
+                issue_activity,
                 type="link.activity.created",
                 requested_data=json.dumps(serializer.data, cls=DjangoJSONEncoder),
                 issue_id=str(self.kwargs.get("issue_id")),
@@ -1298,6 +1308,7 @@ class IssueLinkDetailAPIEndpoint(BaseAPIView):
             404: LINK_NOT_FOUND_RESPONSE,
         },
     )
+    @act_as_content("work_item_link.update", "issue_link", {"title", "url", "metadata"})
     def patch(self, request, slug, project_id, issue_id, pk):
         """Update issue link
 
@@ -1313,8 +1324,9 @@ class IssueLinkDetailAPIEndpoint(BaseAPIView):
             serializer.save()
             updated_url = serializer.data.get("url")
             if updated_url and updated_url != previous_url:
-                crawl_work_item_link_title.delay(serializer.data.get("id"), updated_url)
-            issue_activity.delay(
+                content_task_delay(crawl_work_item_link_title, serializer.data.get("id"), updated_url)
+            content_task_delay(
+                issue_activity,
                 type="link.activity.updated",
                 requested_data=requested_data,
                 actor_id=str(request.user.id),
@@ -1449,6 +1461,7 @@ class IssueCommentListCreateAPIEndpoint(BaseAPIView):
             409: EXTERNAL_ID_EXISTS_RESPONSE,
         },
     )
+    @act_as_content("comment.create", "issue_comment", COMMENT_FIELDS)
     def post(self, request, slug, project_id, issue_id):
         """Create work item comment
 
@@ -1490,7 +1503,8 @@ class IssueCommentListCreateAPIEndpoint(BaseAPIView):
             issue_comment.actor_id = request.data.get("created_by", request.user.id)
             issue_comment.save(update_fields=["created_at", "created_by"])
 
-            issue_activity.delay(
+            content_task_delay(
+                issue_activity,
                 type="comment.activity.created",
                 requested_data=json.dumps(serializer.data, cls=DjangoJSONEncoder),
                 actor_id=str(issue_comment.created_by_id),
@@ -1501,7 +1515,8 @@ class IssueCommentListCreateAPIEndpoint(BaseAPIView):
             )
 
             # Send the model activity
-            model_activity.delay(
+            content_task_delay(
+                model_activity,
                 model_name="issue_comment",
                 model_id=str(serializer.instance.id),
                 requested_data=request.data,
@@ -1598,6 +1613,7 @@ class IssueCommentDetailAPIEndpoint(BaseAPIView):
             409: EXTERNAL_ID_EXISTS_RESPONSE,
         },
     )
+    @act_as_content("comment.update", "issue_comment", COMMENT_FIELDS)
     def patch(self, request, slug, project_id, issue_id, pk):
         """Update work item comment
 
@@ -1630,7 +1646,8 @@ class IssueCommentDetailAPIEndpoint(BaseAPIView):
         serializer = IssueCommentCreateSerializer(issue_comment, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            issue_activity.delay(
+            content_task_delay(
+                issue_activity,
                 type="comment.activity.updated",
                 requested_data=requested_data,
                 actor_id=str(request.user.id),
@@ -1640,7 +1657,8 @@ class IssueCommentDetailAPIEndpoint(BaseAPIView):
                 epoch=int(timezone.now().timestamp()),
             )
             # Send the model activity
-            model_activity.delay(
+            content_task_delay(
+                model_activity,
                 model_name="issue_comment",
                 model_id=str(pk),
                 requested_data=request.data,

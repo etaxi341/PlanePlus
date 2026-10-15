@@ -23,6 +23,7 @@ from rest_framework.generics import GenericAPIView
 
 # Module imports
 from plane.api.middleware.api_authentication import APIKeyAuthentication
+from plane.api.act_as import ActAsAPIMixin
 from plane.api.rate_limit import ApiKeyRateThrottle
 from plane.utils.exception_logger import log_exception
 from plane.utils.paginator import BasePaginator
@@ -46,7 +47,7 @@ class TimezoneMixin:
             timezone.deactivate()
 
 
-class BaseAPIView(TimezoneMixin, GenericAPIView, ReadReplicaControlMixin, BasePaginator):
+class BaseAPIView(ActAsAPIMixin, TimezoneMixin, GenericAPIView, ReadReplicaControlMixin, BasePaginator):
     authentication_classes = [APIKeyAuthentication]
 
     permission_classes = [IsAuthenticated]
@@ -151,7 +152,7 @@ class BaseAPIView(TimezoneMixin, GenericAPIView, ReadReplicaControlMixin, BasePa
         return expand if expand else None
 
 
-class BaseViewSet(TimezoneMixin, ReadReplicaControlMixin, ModelViewSet, BasePaginator):
+class BaseViewSet(ActAsAPIMixin, TimezoneMixin, ReadReplicaControlMixin, ModelViewSet, BasePaginator):
     model = None
 
     authentication_classes = [APIKeyAuthentication]

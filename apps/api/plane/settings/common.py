@@ -120,6 +120,7 @@ MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "plane.authentication.middleware.session.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "plane.api.act_as.ActAsBoundaryMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -148,6 +149,9 @@ REST_FRAMEWORK = {
 
 # API key throttle rate (DRF SimpleRateThrottle format, e.g. "60/minute")
 API_KEY_RATE_LIMIT = os.environ.get("API_KEY_RATE_LIMIT", "60/minute")
+
+# Explicitly opt in. This never enables session/OAuth impersonation.
+PLANEPLUS_ENABLE_ACT_AS = os.environ.get("PLANEPLUS_ENABLE_ACT_AS", "0") == "1"
 
 # Django Auth Backend
 AUTHENTICATION_BACKENDS = ("django.contrib.auth.backends.ModelBackend",)
@@ -185,7 +189,8 @@ else:
     CORS_ALLOW_ALL_ORIGINS = True
     secure_origins = False
 
-CORS_ALLOW_HEADERS = [*default_headers, "X-API-Key"]
+CORS_ALLOW_HEADERS = [*default_headers, "X-API-Key", "X-PlanePlus-Act-As-User", "X-PlanePlus-Act-As-Reason"]
+CORS_EXPOSE_HEADERS = ["X-PlanePlus-Act-As-Audit-Id", "X-PlanePlus-Act-As-User"]
 
 # Application Settings
 WSGI_APPLICATION = "plane.wsgi.application"

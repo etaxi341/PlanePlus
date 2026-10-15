@@ -176,6 +176,7 @@ update_env_file(){
     update_env_value "LIVE_SERVER_SECRET_KEY" "$LIVE_SERVER_SECRET_KEY"
 
     update_env_value "API_KEY_RATE_LIMIT" "${API_KEY_RATE_LIMIT:-60/minute}"
+    update_env_value "PLANEPLUS_ENABLE_ACT_AS" "${PLANEPLUS_ENABLE_ACT_AS:-0}"
 
     echo "✅ Environment file updated"
     echo ""

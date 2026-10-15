@@ -40,6 +40,9 @@ class APIKeyAuthentication(authentication.BaseAuthentication):
         # save api token last used
         api_token.last_used = timezone.now()
         api_token.save(update_fields=["last_used"])
+        # Authentication instances are per request. Keep verified token metadata
+        # for act-as authorization without changing request.user or request.auth.
+        self.api_token = api_token
         return (api_token.user, api_token.token)
 
     def authenticate(self, request):
