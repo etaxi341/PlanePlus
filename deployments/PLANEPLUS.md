@@ -8,11 +8,12 @@ The AIO image must embed these PlanePlus images, never `makeplane/plane-*`.
 ## Tags
 
 - A push to `master` builds the six service images with `:latest`.
-- A push to `preview` builds them with `:preview`.
+- No other branch publishes images. Manual builds/releases are also restricted
+  to `master`, and CI branch filters target `master` rather than upstream's `preview`.
 - A manual **Release** builds the supplied version tag. Only a non-prerelease
   also updates `:stable`; regular branch builds do not change `:stable`.
 - AIO is optional for branch builds and enabled for releases. Its component
-  source tag matches the service tag (`latest`, `preview`, or the release version).
+  source tag matches the service tag (`latest` or the release version).
 
 Before any images are published, the build workflow runs the configuration
 regression tests. Run them locally with:

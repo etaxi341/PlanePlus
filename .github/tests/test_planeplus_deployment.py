@@ -27,7 +27,8 @@ BUILD_ACTION = "makeplane/actions/build-push@398c0632195865906c6839b0292c67b9fd2
 
 
 def read_yaml(path):
-    return yaml.safe_load((ROOT / path).read_text(encoding="utf-8"))
+    # BaseLoader preserves GitHub's `on` key instead of treating it as a YAML 1.1 boolean.
+    return yaml.load((ROOT / path).read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
 
 
 class TestPlanePlusDeployment(unittest.TestCase):
@@ -38,7 +39,10 @@ class TestPlanePlusDeployment(unittest.TestCase):
     def test_publish_jobs_are_guarded_and_use_fork_images(self):
         jobs = self.workflow["jobs"]
         setup = jobs["branch_build_setup"]
-        self.assertEqual(setup["if"], "${{ github.repository == 'etaxi341/PlanePlus' }}")
+        self.assertEqual(
+            setup["if"],
+            "${{ github.repository == 'etaxi341/PlanePlus' && github.ref == 'refs/heads/master' }}",
+        )
         setup_script = setup["steps"][0]["run"]
         self.assertIn("BUILDX_ENDPOINT=johannmnn/planeplus-dev", setup_script)
         for component, image in IMAGES.items():
@@ -58,6 +62,16 @@ class TestPlanePlusDeployment(unittest.TestCase):
                     "${{ needs.branch_build_setup.outputs.dh_img_" + output + " }}",
                 )
                 self.assertIn(f"DH_IMG_{output.upper()}={image}", setup_script)
+
+    def test_automatic_workflows_target_master_only(self):
+        for path in (ROOT / ".github/workflows").glob("*.yml"):
+            workflow = read_yaml(path)
+            for event in ("push", "pull_request"):
+                config = workflow.get("on", {}).get(event) or {}
+                if "branches" in config:
+                    with self.subTest(workflow=path.name, event=event):
+                        self.assertEqual(config["branches"], ["master"])
+        self.assertEqual(self.workflow["on"]["push"]["branches"], ["master"])
 
     def test_upstream_preview_cannot_publish_from_fork(self):
         workflow = read_yaml(".github/workflows/feature-deployment.yml")
@@ -112,9 +126,9 @@ class TestPlanePlusDeployment(unittest.TestCase):
         asset_script = script[:script.index("cp ./deployments")]
         cases = (
             ("", "master", "latest", "latest"),
-            ("Build", "preview", "latest", "preview"),
+            ("Build", "master", "latest", "latest"),
             ("Release", "master", "v1.4.3", "v1.4.3"),
-            ("Release", "preview", "v1.4.3-rc-1", "v1.4.3-rc-1"),
+            ("Release", "master", "v1.4.3-rc-1", "v1.4.3-rc-1"),
         )
         for variable, script in (("aio_version", aio_script), ("REL_VERSION", asset_script)):
             for build_type, branch, release, expected in cases:

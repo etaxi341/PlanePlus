@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     branches:
-      - "preview"
+      - "master"
     types:
       - "opened"
       - "synchronize"
@@ -15,7 +15,7 @@ on:
       - ".github/workflows/i18n-sync-check.yml"
   push:
     branches:
-      - "preview"
+      - "master"
     paths:
       - "packages/i18n/**"
 

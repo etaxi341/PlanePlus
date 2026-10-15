@@ -9,13 +9,13 @@ name: React Doctor
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  # Scans `preview` on every push so you get a health-score trend on the
+  # Scans `master` on every push so you get a health-score trend on the
   # default branch — useful for tracking the overall number commit-by-commit
   # and catching regressions that slipped past PR review. PR-specific steps
   # (the sticky summary comment) are skipped automatically on `push` events.
   # Comment this block out if you only want PR-time scans.
   push:
-    branches: [preview]
+    branches: [master]
 
 permissions:
   # `actions/checkout` needs this to read the repo source.

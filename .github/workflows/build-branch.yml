@@ -32,7 +32,6 @@ on:
         type: boolean
   push:
     branches:
-      - preview
       - master
 
 concurrency:
@@ -49,7 +48,7 @@ env:
 
 jobs:
   branch_build_setup:
-    if: ${{ github.repository == 'etaxi341/PlanePlus' }}
+    if: ${{ github.repository == 'etaxi341/PlanePlus' && github.ref == 'refs/heads/master' }}
     name: Build Setup
     runs-on: ubuntu-22.04
     outputs:
@@ -302,10 +301,8 @@ jobs:
 
           if [ "${{ needs.branch_build_setup.outputs.build_type }}" == "Release" ]; then
             aio_version=${{ needs.branch_build_setup.outputs.release_version }}
-          elif [ "${{ needs.branch_build_setup.outputs.gh_branch_name }}" == "master" ]; then
-            aio_version=latest
           else
-            aio_version=${{ needs.branch_build_setup.outputs.gh_branch_name }}
+            aio_version=latest
           fi
           bash ./build.sh --release $aio_version
           echo "AIO_BUILD_VERSION=${aio_version}" >> $GITHUB_OUTPUT
@@ -356,10 +353,8 @@ jobs:
         run: |
           if [ "${{ needs.branch_build_setup.outputs.build_type }}" == "Release" ]; then
             REL_VERSION=${{ needs.branch_build_setup.outputs.release_version }}
-          elif [ "${{ needs.branch_build_setup.outputs.gh_branch_name }}" == "master" ]; then
-            REL_VERSION=latest
           else
-            REL_VERSION=${{ needs.branch_build_setup.outputs.gh_branch_name }}
+            REL_VERSION=latest
           fi
 
           cp ./deployments/cli/community/install.sh deployments/cli/community/setup.sh
