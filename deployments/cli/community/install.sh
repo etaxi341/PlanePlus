@@ -5,9 +5,9 @@ SCRIPT_DIR=$PWD
 SERVICE_FOLDER=plane-app
 PLANE_INSTALL_DIR=$PWD/$SERVICE_FOLDER
 export APP_RELEASE=stable
-export DOCKERHUB_USER=makeplane
+export DOCKERHUB_USER=johannmnn
 export PULL_POLICY=${PULL_POLICY:-if_not_present}
-export GH_REPO=makeplane/plane
+export GH_REPO=etaxi341/PlanePlus
 export RELEASE_DOWNLOAD_URL="https://github.com/$GH_REPO/releases/download"
 export FALLBACK_DOWNLOAD_URL="https://raw.githubusercontent.com/$GH_REPO/$BRANCH/deployments/cli/community"
 
@@ -57,7 +57,7 @@ function spinner() {
 
 function checkLatestRelease(){
     echo "Checking for the latest release..." >&2
-    local latest_release=$(curl -sSL https://api.github.com/repos/$GH_REPO/releases/latest |  grep -o '"tag_name": "[^"]*"' | sed 's/"tag_name": "//;s/"//g')
+    local latest_release=$(curl -sSL https://api.github.com/repos/$GH_REPO/releases/latest |  grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//;s/"//g')
     if [ -z "$latest_release" ]; then
         echo "Failed to check for the latest release. Exiting..." >&2
         exit 1
@@ -77,7 +77,7 @@ function initialize(){
         return 1
     fi
 
-    local IMAGE_NAME=makeplane/plane-proxy
+    local IMAGE_NAME=johannmnn/planeplus-proxy
     local IMAGE_TAG=${APP_RELEASE}
     docker manifest inspect "${IMAGE_NAME}:${IMAGE_TAG}" | grep -q "\"architecture\": \"${CPU_ARCH}\"" &
     local pid=$!
@@ -217,7 +217,9 @@ function install() {
     echo ""
 
     if [ "$APP_RELEASE" == "stable" ]; then
-        export APP_RELEASE=$(checkLatestRelease)
+        # exit inside checkLatestRelease only leaves the $(...) subshell
+        APP_RELEASE=$(checkLatestRelease) || exit 1
+        export APP_RELEASE
     fi
 
     local build_image=$(initialize)
@@ -424,7 +426,8 @@ function restartServices() {
     startServices
 }
 function upgrade() {
-    local latest_release=$(checkLatestRelease)
+    local latest_release
+    latest_release=$(checkLatestRelease) || exit 1
 
     echo ""
     echo "Current release: $APP_RELEASE"
@@ -690,7 +693,7 @@ if [ -f "$DOCKER_ENV_PATH" ]; then
     CUSTOM_BUILD=$(getEnvValue "CUSTOM_BUILD" "$DOCKER_ENV_PATH")
 
     if [ -z "$DOCKERHUB_USER" ]; then
-        DOCKERHUB_USER=makeplane
+        DOCKERHUB_USER=johannmnn
         updateEnvFile "DOCKERHUB_USER" "$DOCKERHUB_USER" "$DOCKER_ENV_PATH"
     fi
 

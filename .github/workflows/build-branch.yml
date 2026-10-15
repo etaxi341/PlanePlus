@@ -49,6 +49,7 @@ env:
 
 jobs:
   branch_build_setup:
+    if: ${{ github.repository == 'etaxi341/PlanePlus' }}
     name: Build Setup
     runs-on: ubuntu-22.04
     outputs:
@@ -136,13 +137,23 @@ jobs:
         name: Checkout Files
         uses: actions/checkout@v6
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Check PlanePlus publishing configuration
+        run: |
+          python -m pip install PyYAML==6.0.2
+          python -m unittest discover -s .github/tests -v
+
   branch_build_push_admin:
     name: Build-Push Admin Docker Image
     runs-on: ubuntu-22.04
     needs: [branch_build_setup]
     steps:
       - name: Admin Build and Push
-        uses: makeplane/actions/build-push@v1.4.0
+        uses: makeplane/actions/build-push@398c0632195865906c6839b0292c67b9fd2a301e # v1.4.0
         with:
           build-release: ${{ needs.branch_build_setup.outputs.build_release }}
           build-prerelease: ${{ needs.branch_build_setup.outputs.build_prerelease }}
@@ -164,7 +175,7 @@ jobs:
     needs: [branch_build_setup]
     steps:
       - name: Web Build and Push
-        uses: makeplane/actions/build-push@v1.4.0
+        uses: makeplane/actions/build-push@398c0632195865906c6839b0292c67b9fd2a301e # v1.4.0
         with:
           build-release: ${{ needs.branch_build_setup.outputs.build_release }}
           build-prerelease: ${{ needs.branch_build_setup.outputs.build_prerelease }}
@@ -186,7 +197,7 @@ jobs:
     needs: [branch_build_setup]
     steps:
       - name: Space Build and Push
-        uses: makeplane/actions/build-push@v1.4.0
+        uses: makeplane/actions/build-push@398c0632195865906c6839b0292c67b9fd2a301e # v1.4.0
         with:
           build-release: ${{ needs.branch_build_setup.outputs.build_release }}
           build-prerelease: ${{ needs.branch_build_setup.outputs.build_prerelease }}
@@ -208,7 +219,7 @@ jobs:
     needs: [branch_build_setup]
     steps:
       - name: Live Build and Push
-        uses: makeplane/actions/build-push@v1.4.0
+        uses: makeplane/actions/build-push@398c0632195865906c6839b0292c67b9fd2a301e # v1.4.0
         with:
           build-release: ${{ needs.branch_build_setup.outputs.build_release }}
           build-prerelease: ${{ needs.branch_build_setup.outputs.build_prerelease }}
@@ -230,7 +241,7 @@ jobs:
     needs: [branch_build_setup]
     steps:
       - name: Backend Build and Push
-        uses: makeplane/actions/build-push@v1.4.0
+        uses: makeplane/actions/build-push@398c0632195865906c6839b0292c67b9fd2a301e # v1.4.0
         with:
           build-release: ${{ needs.branch_build_setup.outputs.build_release }}
           build-prerelease: ${{ needs.branch_build_setup.outputs.build_prerelease }}
@@ -252,7 +263,7 @@ jobs:
     needs: [branch_build_setup]
     steps:
       - name: Proxy Build and Push
-        uses: makeplane/actions/build-push@v1.4.0
+        uses: makeplane/actions/build-push@398c0632195865906c6839b0292c67b9fd2a301e # v1.4.0
         with:
           build-release: ${{ needs.branch_build_setup.outputs.build_release }}
           build-prerelease: ${{ needs.branch_build_setup.outputs.build_prerelease }}
@@ -291,6 +302,8 @@ jobs:
 
           if [ "${{ needs.branch_build_setup.outputs.build_type }}" == "Release" ]; then
             aio_version=${{ needs.branch_build_setup.outputs.release_version }}
+          elif [ "${{ needs.branch_build_setup.outputs.gh_branch_name }}" == "master" ]; then
+            aio_version=latest
           else
             aio_version=${{ needs.branch_build_setup.outputs.gh_branch_name }}
           fi
@@ -304,7 +317,7 @@ jobs:
           name: aio-assets-dist
 
       - name: AIO Build and Push
-        uses: makeplane/actions/build-push@v1.4.0
+        uses: makeplane/actions/build-push@398c0632195865906c6839b0292c67b9fd2a301e # v1.4.0
         with:
           build-release: ${{ needs.branch_build_setup.outputs.build_release }}
           build-prerelease: ${{ needs.branch_build_setup.outputs.build_prerelease }}
@@ -343,6 +356,8 @@ jobs:
         run: |
           if [ "${{ needs.branch_build_setup.outputs.build_type }}" == "Release" ]; then
             REL_VERSION=${{ needs.branch_build_setup.outputs.release_version }}
+          elif [ "${{ needs.branch_build_setup.outputs.gh_branch_name }}" == "master" ]; then
+            REL_VERSION=latest
           else
             REL_VERSION=${{ needs.branch_build_setup.outputs.gh_branch_name }}
           fi

@@ -5,9 +5,9 @@ SERVICE_FOLDER=plane-app
 SCRIPT_DIR=$PWD
 PLANE_INSTALL_DIR=$PWD/$SERVICE_FOLDER
 export APP_RELEASE="stable"
-export DOCKERHUB_USER=makeplane
+export DOCKERHUB_USER=johannmnn
 
-export GH_REPO=makeplane/plane
+export GH_REPO=etaxi341/PlanePlus
 export RELEASE_DOWNLOAD_URL="https://github.com/$GH_REPO/releases/download"
 export FALLBACK_DOWNLOAD_URL="https://raw.githubusercontent.com/$GH_REPO/$BRANCH/deployments/cli/community"
 
@@ -38,7 +38,7 @@ EOF
 
 function checkLatestRelease(){
     echo "Checking for the latest release..." >&2
-    local latest_release=$(curl -s https://api.github.com/repos/$GH_REPO/releases/latest |  grep -o '"tag_name": "[^"]*"' | sed 's/"tag_name": "//;s/"//g')
+    local latest_release=$(curl -s https://api.github.com/repos/$GH_REPO/releases/latest |  grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//;s/"//g')
     if [ -z "$latest_release" ]; then
         echo "Failed to check for the latest release. Exiting..." >&2
         exit 1
@@ -220,7 +220,7 @@ function deployStack() {
     if [ ! -f "$DOCKER_FILE_PATH" ] || [ ! -f "$DOCKER_ENV_PATH" ]; then
         echo "Configuration files not found"
         echo "Downloading it now......"
-        APP_RELEASE=$(checkLatestRelease)
+        APP_RELEASE=$(checkLatestRelease) || exit 1
         download
     fi
     if [ -z "$stack_name" ]; then
@@ -335,7 +335,8 @@ function upgrade() {
         exit 1
     fi
     
-    local latest_release=$(checkLatestRelease)
+    local latest_release
+    latest_release=$(checkLatestRelease) || exit 1
 
     echo ""
     echo "Current release: $APP_RELEASE"
@@ -595,7 +596,7 @@ if [ -f "$DOCKER_ENV_PATH" ]; then
     APP_RELEASE=$(getEnvValue "APP_RELEASE" "$DOCKER_ENV_PATH")
 
     if [ -z "$DOCKERHUB_USER" ]; then
-        DOCKERHUB_USER=makeplane
+        DOCKERHUB_USER=johannmnn
         updateEnvFile "DOCKERHUB_USER" "$DOCKERHUB_USER" "$DOCKER_ENV_PATH"
     fi
 

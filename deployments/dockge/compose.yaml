@@ -142,7 +142,7 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
 
   plane-minio:
-    image: minio/minio:latest
+    image: docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z
     pull_policy: if_not_present
     restart: unless-stopped
     command: server /export --console-address ":9090"

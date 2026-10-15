@@ -22,6 +22,7 @@ from rest_framework.views import APIView
 # Module imports
 from plane.authentication.provider.credentials.email import EmailProvider
 from plane.authentication.utils.login import user_login
+from plane.authentication.rate_limit import throttle_auth_redirect
 from plane.license.models import Instance
 from plane.authentication.utils.host import base_host
 from plane.authentication.utils.redirection_path import get_redirection_path
@@ -237,6 +238,22 @@ class SignInAuthEndpoint(APIView):
 
         existing_user = User.objects.filter(email=email).first()
 
+        # The SWG flow logs existing users in directly, bypassing the upstream
+        # adapter. Preserve its account safety checks before changing passwords
+        # or creating a session.
+        error_key = None
+        if existing_user and not existing_user.is_active and existing_user.last_logout_time is not None:
+            error_key = "USER_ACCOUNT_DEACTIVATED"
+        elif existing_user and existing_user.is_bot:
+            error_key = "BOT_USER_LOGIN_FORBIDDEN"
+        if error_key:
+            exc = AuthenticationException(
+                error_code=AUTHENTICATION_ERROR_CODES[error_key],
+                error_message=error_key,
+                payload={"email": email},
+            )
+            return Response(exc.get_error_dict(), status=status.HTTP_403_FORBIDDEN)
+
         if not existing_user:
             # Auto-provision new users on first successful login
             try:
@@ -278,6 +295,7 @@ class SignInAuthEndpoint(APIView):
 
 
 class SignUpAuthEndpoint(View):
+    @throttle_auth_redirect(is_app=True)
     def post(self, request):
         # Direct sign-up is disabled — authentication is handled via SWG Auth.
         # New users are auto-provisioned on first login via SignInAuthEndpoint.

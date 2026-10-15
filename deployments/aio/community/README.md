@@ -59,7 +59,7 @@ docker run --name plane-aio --rm -it \
     -e AWS_ACCESS_KEY_ID=your-access-key \
     -e AWS_SECRET_ACCESS_KEY=your-secret-key \
     -e AWS_S3_BUCKET_NAME=your-bucket \
-    makeplane/plane-aio-community:latest
+    johannmnn/planeplus-aio-community:latest
 ```
 
 ### Example with IP Address
@@ -78,7 +78,7 @@ docker run --name myaio --rm -it \
     -e AWS_S3_BUCKET_NAME=plane-app \
     -e AWS_S3_ENDPOINT_URL=http://${MYIP}:19000 \
     -e FILE_SIZE_LIMIT=10485760 \
-    makeplane/plane-aio-community:latest
+    johannmnn/planeplus-aio-community:latest
 ```
 
 ## Configuration Options
@@ -130,7 +130,7 @@ IMAGE_NAME=myplane-aio ./build.sh --release=v0.27.1 [--platform=linux/amd64]
 Available build options:
 
 - `--release`: Plane version to build (required)
-- `--image-name`: Custom image name (default: `plane-aio-community`)
+- `--image-name`: Custom image name (default: `johannmnn/planeplus-aio-community`)
 
 ## Troubleshooting
 
