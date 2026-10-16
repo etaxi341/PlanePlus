@@ -15,9 +15,20 @@ from unittest import mock
 from uuid import uuid4
 
 import pytest
+from django.core.cache import cache
 from rest_framework import status
 
 from plane.db.models import FileAsset, User, Workspace, WorkspaceMember
+
+
+@pytest.fixture(autouse=True)
+def isolated_asset_services(settings, monkeypatch):
+    settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+    cache.clear()
+    monkeypatch.setattr("plane.middleware.logger.process_logs.delay", mock.Mock())
+    monkeypatch.setattr("plane.api.views.asset.get_asset_object_metadata.delay", mock.Mock())
+    yield
+    cache.clear()
 
 
 @pytest.fixture
@@ -180,6 +191,9 @@ class TestGenericAssetUploads:
             is_uploaded=False,
             storage_metadata={"size": 10},
         )
+        # BaseModel clears constructor authors outside a request; this fixture
+        # represents an upload previously created by the authenticated user.
+        FileAsset.objects.filter(id=asset.id).update(created_by=create_user)
         url = self.detail_url(workspace.slug, asset.id)
 
         response = api_key_client.patch(url, {"is_uploaded": True}, format="json")

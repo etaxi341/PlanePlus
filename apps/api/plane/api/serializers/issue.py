@@ -34,6 +34,7 @@ from plane.utils.content_validator import (
 from plane.utils.act_as import get_act_as_context
 
 from .base import BaseSerializer
+from .asset import validate_upload_size
 from .cycle import CycleLiteSerializer, CycleSerializer
 from .module import ModuleLiteSerializer, ModuleSerializer
 from .state import StateLiteSerializer
@@ -124,9 +125,9 @@ class IssueSerializer(BaseSerializer):
         # Validate labels are from project
         if data.get("labels", []):
             valid_label_ids = set(
-                Label.objects.filter(
-                    project_id=self.context.get("project_id"), id__in=data["labels"]
-                ).values_list("id", flat=True)
+                Label.objects.filter(project_id=self.context.get("project_id"), id__in=data["labels"]).values_list(
+                    "id", flat=True
+                )
             )
             invalid_label_ids = set(data["labels"]) - valid_label_ids
             if invalid_label_ids:
@@ -881,7 +882,7 @@ class IssueAttachmentUploadSerializer(serializers.Serializer):
 
     name = serializers.CharField(help_text="Original filename of the asset")
     type = serializers.CharField(required=False, help_text="MIME type of the file")
-    size = serializers.IntegerField(help_text="File size in bytes")
+    size = serializers.IntegerField(min_value=1, help_text="File size in bytes")
     external_id = serializers.CharField(
         required=False,
         help_text="External identifier for the asset (for integration tracking)",
@@ -889,6 +890,9 @@ class IssueAttachmentUploadSerializer(serializers.Serializer):
     external_source = serializers.CharField(
         required=False, help_text="External source system (for integration tracking)"
     )
+
+    def validate_size(self, value):
+        return validate_upload_size(value)
 
 
 class IssueSearchSerializer(serializers.Serializer):

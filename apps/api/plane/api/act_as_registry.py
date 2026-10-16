@@ -12,6 +12,7 @@ from django.db.models import Q
 
 from plane.api.act_as import ContentOperation, ActAsError, parse_uuid
 from plane.db import models as db
+from plane.utils.permissions.issue import guest_issue_visibility
 
 
 REGISTRY = {}
@@ -49,12 +50,30 @@ register(
 )
 register("issue", "IssueListCreateAPIEndpoint IssueDetailAPIEndpoint", "issue", "GET HEAD")
 register("issue", "IssueSearchEndpoint", "issue", "GET HEAD", scope="workspace")
+register("issue", "WorkspaceIssueAPIEndpoint", "issue", "GET HEAD")
 register("issue", "IssueCommentListCreateAPIEndpoint IssueCommentDetailAPIEndpoint", "issue_comment", "GET HEAD")
 register("issue", "IssueLinkListCreateAPIEndpoint IssueLinkDetailAPIEndpoint", "issue_link", "GET HEAD")
 register("issue", "IssueActivityListAPIEndpoint IssueActivityDetailAPIEndpoint", "issue_activity", "GET HEAD")
 register("issue", "IssueAttachmentListCreateAPIEndpoint IssueAttachmentDetailAPIEndpoint", "file_asset", "GET HEAD")
-register("issue", "IssueAttachmentListCreateAPIEndpoint", "file_asset", "POST", {"name", "size", "type"})
-register("issue", "IssueAttachmentDetailAPIEndpoint", "file_asset", "PATCH DELETE")
+register(
+    "issue",
+    "IssueAttachmentListCreateAPIEndpoint",
+    "file_asset",
+    "POST",
+    {"name", "size", "type", "external_id", "external_source"},
+)
+register("issue", "IssueAttachmentDetailAPIEndpoint", "file_asset", "PATCH", {"is_uploaded"})
+register("issue", "IssueAttachmentDetailAPIEndpoint", "file_asset", "DELETE")
+register("asset", "GenericAssetEndpoint", "generic_asset", "GET HEAD", scope="workspace")
+register(
+    "asset",
+    "GenericAssetEndpoint",
+    "generic_asset",
+    "POST",
+    {"name", "size", "type", "project_id", "external_id", "external_source"},
+    scope="workspace",
+)
+register("asset", "GenericAssetEndpoint", "generic_asset", "PATCH", {"is_uploaded", "issue_id"}, scope="workspace")
 register("impersonation", "WorkItemInlineAssetEndpoint", "inline_asset", "GET HEAD")
 register("issue", "IssueRelationListCreateAPIEndpoint", "issue_relation", "GET HEAD")
 register("issue", "IssueRelationListCreateAPIEndpoint", "issue_relation", "POST", {"relation_type", "issues"})
@@ -118,6 +137,7 @@ register("cycle", "CycleDetailAPIEndpoint", "cycle", "DELETE")
 register("cycle", "CycleArchiveUnarchiveAPIEndpoint", "cycle", "POST DELETE")
 register("cycle", "CycleIssueListCreateAPIEndpoint", "cycle_issue", "POST", {"issues"})
 register("cycle", "CycleIssueDetailAPIEndpoint", "cycle_issue", "DELETE")
+register("cycle", "TransferCycleIssueAPIEndpoint", "cycle_transfer", "POST", {"new_cycle_id"})
 register(
     "module",
     "ModuleListCreateAPIEndpoint ModuleListLiteAPIEndpoint ModuleDetailAPIEndpoint "
@@ -187,16 +207,30 @@ register(
     {"issue", "status", "duplicate_to", "snoozed_till"},
 )
 register("intake", "IntakeIssueDetailAPIEndpoint", "intake_issue", "DELETE")
+register("sticky", "StickyViewSet", "sticky", "GET HEAD", scope="workspace")
+register(
+    "sticky",
+    "StickyViewSet",
+    "sticky",
+    "POST PATCH PUT",
+    {
+        "name",
+        "description",
+        "description_html",
+        "description_binary",
+        "logo_props",
+        "color",
+        "background_color",
+        "sort_order",
+    },
+    scope="workspace",
+)
+register("sticky", "StickyViewSet", "sticky", "DELETE", scope="workspace")
 
 
 def visible_issues(queryset, user):
     """Normal project membership plus PlanePlus guest-own-item visibility."""
-    return queryset.filter(
-        Q(project__project_projectmember__role__gte=15) | Q(project__guest_view_all_features=True) | Q(created_by=user),
-        project__project_projectmember__member=user,
-        project__project_projectmember__is_active=True,
-        project__project_projectmember__deleted_at__isnull=True,
-    ).distinct()
+    return queryset.filter(guest_issue_visibility(user)).distinct()
 
 
 def project_visibility(request):
@@ -217,30 +251,8 @@ def scoped_object(model, value, workspace, project, **extra):
 def validate_read_scope(request, view, target, project, operation):
     if project:
         validate_url_scope(view, project.workspace, project, operation)
-    # Aggregate family endpoints include work items. Guests must not obtain
-    # hidden item counts/details through cycles, modules, or project summaries.
-    if project and operation.resource_type not in {
-        "project",
-        "project_member",
-        "issue",
-        "issue_comment",
-        "issue_link",
-        "file_asset",
-        "inline_asset",
-        "intake_issue",
-    }:
-        if not db.ProjectMember.objects.filter(project=project, member=target, is_active=True, role__gte=15).exists():
-            raise ActAsError("act_as_target_permission_denied", "This resource requires project member access.")
-    if (
-        type(view).__name__ == "ProjectSummaryAPIEndpoint"
-        and not db.ProjectMember.objects.filter(
-            project=project,
-            member=target,
-            is_active=True,
-            role__gte=15,
-        ).exists()
-    ):
-        raise ActAsError("act_as_target_permission_denied", "Project summaries require project member access.")
+    # Role permissions belong to the existing endpoint, not a second act-as
+    # role hierarchy. Resource scope and guest ticket visibility remain checked.
     if operation.resource_type == "issue_comment" and view.kwargs.get("pk"):
         comment = scoped_object(db.IssueComment, view.kwargs["pk"], project.workspace, project)
         if db.ProjectMember.objects.filter(project=project, member=target, role=5, is_active=True).exists():
@@ -292,9 +304,9 @@ def validate_write_scope(request, view, target, workspace, project, operation):
     if project is None:
         return
     validate_url_scope(view, workspace, project, operation)
+    if operation.resource_type == "cycle_transfer":
+        scoped_object(db.Cycle, request.data.get("new_cycle_id"), workspace, project)
     if operation.resource_type == "file_asset":
-        if not db.ProjectMember.objects.filter(project=project, member=target, is_active=True, role__gte=15).exists():
-            raise ActAsError("act_as_target_permission_denied", "Attachment writes require project member access.")
         if view.kwargs.get("pk"):
             scoped_object(
                 db.FileAsset,
@@ -316,10 +328,8 @@ def validate_write_scope(request, view, target, workspace, project, operation):
                 "Intake issue only supports name, description_html, priority, target_date.",
                 400,
             )
-        if not project.intake_view or not db.Intake.objects.filter(project=project, workspace=workspace).exists():
-            raise ActAsError("act_as_resource_forbidden", "Intake must already be enabled and initialized.")
-        if not db.State.triage_objects.filter(project=project, workspace=workspace).exists():
-            raise ActAsError("act_as_resource_forbidden", "The intake triage state must already exist.")
+        if not project.intake_view:
+            raise ActAsError("act_as_resource_forbidden", "Intake is not enabled for this project.")
         if request.data.get("duplicate_to"):
             scoped_object(db.Issue, request.data["duplicate_to"], workspace, project)
         if view.kwargs.get("issue_id"):
@@ -359,12 +369,8 @@ def validate_write_scope(request, view, target, workspace, project, operation):
             raise ActAsError(
                 "act_as_invalid_payload", "estimate_points must contain only key, value and description.", 400
             )
-    if operation.resource_type == "project":
-        # Metadata editing is not a route to change network, membership or roles.
-        if not db.ProjectMember.objects.filter(project=project, member=target, is_active=True, role=20).exists():
-            raise ActAsError(
-                "act_as_target_permission_denied", "Project metadata editing requires project admin access."
-            )
+    # ProjectBasePermission already checks the effective project's/workspace's
+    # administrator. The field allowlist still excludes privacy/role changes.
     for field in ("owned_by", "lead"):
         if request.data.get(field):
             if not db.ProjectMember.objects.filter(

@@ -4,10 +4,17 @@
 
 # Third party imports
 from rest_framework import serializers
+from django.conf import settings
 
 # Module imports
 from .base import BaseSerializer
 from plane.db.models import FileAsset
+
+
+def validate_upload_size(value):
+    if value > settings.FILE_SIZE_LIMIT:
+        raise serializers.ValidationError("File exceeds the configured upload limit.")
+    return value
 
 
 class UserAssetUploadSerializer(serializers.Serializer):
@@ -64,7 +71,7 @@ class GenericAssetUploadSerializer(serializers.Serializer):
 
     name = serializers.CharField(help_text="Original filename of the asset")
     type = serializers.CharField(required=False, help_text="MIME type of the file")
-    size = serializers.IntegerField(help_text="File size in bytes")
+    size = serializers.IntegerField(min_value=1, help_text="File size in bytes")
     project_id = serializers.UUIDField(
         required=False,
         help_text="UUID of the project to associate with the asset",
@@ -78,6 +85,9 @@ class GenericAssetUploadSerializer(serializers.Serializer):
         required=False, help_text="External source system (for integration tracking)"
     )
 
+    def validate_size(self, value):
+        return validate_upload_size(value)
+
 
 class GenericAssetUpdateSerializer(serializers.Serializer):
     """
@@ -88,6 +98,7 @@ class GenericAssetUpdateSerializer(serializers.Serializer):
     """
 
     is_uploaded = serializers.BooleanField(default=True, help_text="Whether the asset has been successfully uploaded")
+    issue_id = serializers.UUIDField(required=False, help_text="Bind the uploader's asset to a visible work item")
 
 
 class FileAssetSerializer(BaseSerializer):

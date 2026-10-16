@@ -54,13 +54,16 @@ def content_user_for_model(instance):
             "cycle": {"db.cycle"},
             "module": {"db.module", "db.modulemember"},
             "cycle_issue": {"db.cycleissue"},
+            "cycle_transfer": {"db.cycle", "db.cycleissue"},
             "module_issue": {"db.moduleissue"},
-            "project": {"db.project", "db.projectidentifier"},
+            "project": {"db.project", "db.projectidentifier", "db.intake"},
             "estimate": {"db.estimate", "db.estimatepoint", "db.project"},
             "estimate_point": {"db.estimatepoint"},
             "issue_relation": {"db.issuerelation"},
             "file_asset": {"db.fileasset"},
-            "intake_issue": set(CONTENT_MODELS) | {"db.intakeissue"},
+            "generic_asset": {"db.fileasset"},
+            "sticky": {"db.sticky"},
+            "intake_issue": set(CONTENT_MODELS) | {"db.intakeissue", "db.state", "db.intake"},
             "project_member": {"db.projectmember", "db.projectuserproperty"},
         }.get(resource, set())
     )
@@ -68,8 +71,8 @@ def content_user_for_model(instance):
     project_id = instance.id if model == "db.project" else getattr(instance, "project_id", None)
     if (
         model not in allowed
-        or context.project is None
-        or str(project_id) != str(context.project.id)
+        or (context.project is None and resource not in {"generic_asset", "sticky"})
+        or str(project_id) != str(context.project.id if context.project else None)
         or str(getattr(instance, "workspace_id", None)) != str(context.workspace.id)
     ):
         raise PermissionDenied("This model cannot be written using act-as.")
@@ -77,6 +80,11 @@ def content_user_for_model(instance):
         member_id = getattr(instance, "member_id", None) or getattr(instance, "user_id", None)
         if member_id != context.target.id:
             raise PermissionDenied("Public join cannot change another user's membership.")
+    if resource == "sticky" and instance.owner_id != context.target.id:
+        raise PermissionDenied("Personal notes can only be written by their owner.")
+    if resource == "intake_issue" and model in {"db.state", "db.intake"}:
+        if not instance._state.adding or (model == "db.state" and instance.group != "triage"):
+            raise PermissionDenied("Intake may initialize triage, not modify project workflow configuration.")
     return context.target
 
 

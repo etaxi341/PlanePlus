@@ -30,6 +30,7 @@ from plane.db.models import (
 from plane.utils.analytics_plot import burndown_plot
 from plane.bgtasks.issue_activities_task import issue_activity
 from plane.utils.host import base_host
+from plane.utils.act_as import content_bulk_authors, content_task_delay
 
 
 def transfer_cycle_issues(
@@ -455,10 +456,15 @@ def transfer_cycle_issues(
         )
 
     # Bulk update cycle issues
-    cycle_issues = CycleIssue.objects.bulk_update(updated_cycles, ["cycle_id"], batch_size=100)
+    cycle_issues = CycleIssue.objects.bulk_update(
+        content_bulk_authors(updated_cycles, update=True),
+        ["cycle_id", "updated_by"],
+        batch_size=100,
+    )
 
     # Capture Issue Activity
-    issue_activity.delay(
+    content_task_delay(
+        issue_activity,
         type="cycle.activity.created",
         requested_data=json.dumps({"cycles_list": []}),
         actor_id=str(user_id),

@@ -18,7 +18,6 @@ from plane.app.permissions import ROLE
 from plane.db.models import (
     ImpersonationAudit,
     FileAsset,
-    IntakeIssue,
     Issue,
     IssueComment,
     Project,
@@ -29,6 +28,7 @@ from plane.db.models import (
     WorkspaceMember,
 )
 from .base import BaseAPIView
+from plane.utils.permissions.issue import require_issue_access
 
 
 class ImpersonationProvenanceSerializer(serializers.ModelSerializer):
@@ -65,6 +65,8 @@ class ImpersonationAuditSerializer(ImpersonationProvenanceSerializer):
 
 
 def check_provenance_access(request, workspace, project_id, issue_id, include_intake=False):
+    if include_intake:
+        return require_issue_access(request, workspace.slug, project_id, issue_id)[1]
     if not WorkspaceMember.objects.filter(workspace=workspace, member=request.user, is_active=True).exists():
         raise PermissionDenied()
     member = (
@@ -83,23 +85,11 @@ def check_provenance_access(request, workspace, project_id, issue_id, include_in
         if member is None or member.role < ROLE.MEMBER.value:
             raise PermissionDenied()
         return member
-    issues = Issue.objects.filter(archived_at__isnull=True, is_draft=False) if include_intake else Issue.issue_objects
-    issue = issues.select_related("state").filter(id=issue_id, project_id=project_id, workspace=workspace).first()
+    issue = Issue.issue_objects.filter(id=issue_id, project_id=project_id, workspace=workspace).first()
     if member is None or issue is None:
         raise PermissionDenied()
-    owner_id = issue.created_by_id
-    if include_intake and issue.state and issue.state.group == "triage":
-        intake_issue = IntakeIssue.objects.filter(
-            workspace=workspace,
-            project_id=project_id,
-            issue=issue,
-            intake__deleted_at__isnull=True,
-        ).first()
-        if not member.project.intake_view or intake_issue is None:
-            raise PermissionDenied()
-        owner_id = intake_issue.created_by_id
     if member.role == ROLE.GUEST.value and not member.project.guest_view_all_features:
-        if owner_id != request.user.id:
+        if issue.created_by_id != request.user.id:
             raise PermissionDenied()
     return member
 
@@ -191,6 +181,7 @@ class ActAsCapabilitiesSerializer(serializers.Serializer):
     public_project_join = serializers.BooleanField(read_only=True)
     intake_target_date = serializers.BooleanField(read_only=True)
     ticket_inline_assets = serializers.DictField(read_only=True)
+    attachments = serializers.DictField(read_only=True)
     operations = serializers.ListField(child=serializers.DictField(), read_only=True)
 
 
@@ -220,19 +211,30 @@ class ActAsCapabilitiesEndpoint(BaseAPIView):
         authorize_act_as_actor(request, slug)
         from plane.api.act_as_registry import capabilities
         from django.urls import get_resolver, URLPattern, URLResolver
+        from django.urls.resolvers import RegexPattern
+        import re
         from plane.utils.inline_assets import INLINE_URL_MAX_SECONDS
 
         routes = {}
 
         def walk(patterns, prefix=""):
             for pattern in patterns:
-                route = prefix + str(pattern.pattern)
+                suffix = str(pattern.pattern)
+                if isinstance(pattern.pattern, RegexPattern):
+                    if "(?P<format>" in suffix:
+                        continue  # Publish canonical router paths, not .json aliases.
+                    suffix = suffix.removeprefix("^").removesuffix("$")
+                    suffix = re.sub(r"\(\?P<(\w+)>[^)]+\)", r"<str:\1>", suffix)
+                route = prefix + suffix
                 if isinstance(pattern, URLResolver):
                     walk(pattern.url_patterns, route)
                 elif isinstance(pattern, URLPattern) and route.startswith("api/v1/"):
                     cls = getattr(pattern.callback, "cls", None)
                     if cls:
-                        methods = pattern.callback.initkwargs.get("http_method_names", cls.http_method_names)
+                        methods = getattr(pattern.callback, "actions", None) or pattern.callback.initkwargs.get(
+                            "http_method_names",
+                            cls.http_method_names,
+                        )
                         for method in methods:
                             routes.setdefault((cls.__name__, method.upper()), []).append("/" + route)
 
@@ -243,7 +245,7 @@ class ActAsCapabilitiesEndpoint(BaseAPIView):
         operations = [operation for operation in operations if operation["paths"]]
         return Response(
             {
-                "version": 3,
+                "version": 4,
                 "enabled": settings.PLANEPLUS_ENABLE_ACT_AS,
                 "user_header": "X-PlanePlus-Act-As-User",
                 "reason_header": "X-PlanePlus-Act-As-Reason",
@@ -251,6 +253,15 @@ class ActAsCapabilitiesEndpoint(BaseAPIView):
                 "reads_as_target": True,
                 "public_project_join": True,
                 "intake_target_date": True,
+                "attachments": {
+                    "guest_uploads": True,
+                    "intake_uploads": True,
+                    "generic_uploads": True,
+                    "confirmation_field": "is_uploaded",
+                    "generic_bind_field": "issue_id",
+                    "transfer": "presigned_multipart_post",
+                    "storage_receives_admin_headers": False,
+                },
                 "ticket_inline_assets": {
                     "supported": True,
                     "https_only": True,

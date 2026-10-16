@@ -12,13 +12,14 @@ from django.conf import settings
 # Third party imports
 from rest_framework import status
 from rest_framework.response import Response
+from rest_framework.exceptions import APIException, PermissionDenied
 from drf_spectacular.utils import OpenApiExample, OpenApiRequest
 
 # Module Imports
 from plane.bgtasks.storage_metadata_task import get_asset_object_metadata
 from plane.settings.storage import S3Storage
 from plane.utils.path_validator import sanitize_filename
-from plane.db.models import FileAsset, User, Workspace
+from plane.db.models import FileAsset, Issue, User, Workspace
 from plane.app.permissions import WorkspaceUserPermission
 from plane.api.views.base import BaseAPIView
 from plane.api.serializers import (
@@ -45,6 +46,9 @@ from plane.utils.openapi import (
     asset_docs,
 )
 from plane.utils.exception_logger import log_exception
+from plane.utils.asset_response import AssetResponseMixin, require_upload_data, require_storage_url
+from plane.utils.act_as import content_task_delay
+from plane.utils.permissions.issue import require_issue_access, require_upload_access
 
 
 class UserAssetEndpoint(BaseAPIView):
@@ -402,7 +406,7 @@ class UserServerAssetEndpoint(BaseAPIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class GenericAssetEndpoint(BaseAPIView):
+class GenericAssetEndpoint(AssetResponseMixin, BaseAPIView):
     """This endpoint is used to upload generic assets that can be later bound to entities."""
 
     # The workspace is taken straight from the URL slug, so every method must
@@ -435,7 +439,10 @@ class GenericAssetEndpoint(BaseAPIView):
             workspace = Workspace.objects.get(slug=slug)
 
             # Get the asset
-            asset = FileAsset.objects.get(id=asset_id, workspace_id=workspace.id, is_deleted=False)
+            asset = FileAsset.objects.select_related("workspace").get(
+                id=asset_id, workspace_id=workspace.id, is_deleted=False
+            )
+            require_upload_access(request, slug, asset)
 
             # Check if the asset exists and is uploaded
             if not asset.is_uploaded:
@@ -448,7 +455,7 @@ class GenericAssetEndpoint(BaseAPIView):
             # Force attachment disposition for script-capable MIME types (e.g. SVG)
             # to prevent same-origin XSS when the asset URL shares the app's origin
             # (default MinIO self-hosted setup).
-            storage = S3Storage(request=request, is_server=True)
+            storage = S3Storage(request=request)
             asset_mime_type = (asset.attributes.get("type") or "").split(";")[0].strip().lower()
             disposition = "attachment" if asset_mime_type in settings.SCRIPT_CAPABLE_MIME_TYPES else "inline"
             presigned_url = storage.generate_presigned_url(
@@ -460,7 +467,7 @@ class GenericAssetEndpoint(BaseAPIView):
             return Response(
                 {
                     "asset_id": str(asset.id),
-                    "asset_url": presigned_url,
+                    "asset_url": require_storage_url(presigned_url),
                     "asset_name": asset.attributes.get("name", ""),
                     "asset_type": asset.attributes.get("type", ""),
                 },
@@ -471,6 +478,8 @@ class GenericAssetEndpoint(BaseAPIView):
             return Response({"error": "Workspace not found"}, status=status.HTTP_404_NOT_FOUND)
         except FileAsset.DoesNotExist:
             return Response({"error": "Asset not found"}, status=status.HTTP_404_NOT_FOUND)
+        except APIException:
+            raise
         except Exception as e:
             log_exception(e)
             return Response(
@@ -513,10 +522,12 @@ class GenericAssetEndpoint(BaseAPIView):
         Create a presigned URL for uploading generic assets that can be bound to entities like work items.
         Supports various file types and includes external source tracking for integrations.
         """
-        name = sanitize_filename(request.data.get("name"))
-        type = request.data.get("type") or "application/octet-stream"
-        size = int(request.data.get("size", settings.FILE_SIZE_LIMIT))
-        project_id = request.data.get("project_id")
+        payload = GenericAssetUploadSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        name = sanitize_filename(payload.validated_data["name"])
+        type = payload.validated_data.get("type") or "application/octet-stream"
+        size = payload.validated_data["size"]
+        project_id = payload.validated_data.get("project_id")
         external_id = request.data.get("external_id")
         external_source = request.data.get("external_source")
 
@@ -540,6 +551,8 @@ class GenericAssetEndpoint(BaseAPIView):
         if external_id and external_source:
             existing_asset = FileAsset.objects.filter(
                 workspace__slug=slug,
+                project_id=project_id,
+                created_by=request.user,
                 external_source=external_source,
                 external_id=external_id,
                 is_deleted=False,
@@ -556,11 +569,11 @@ class GenericAssetEndpoint(BaseAPIView):
                 )
 
         # Create a File Asset
-        asset = FileAsset.objects.create(
+        asset = FileAsset(
             attributes={"name": name, "type": type, "size": size_limit},
             asset=asset_key,
             size=size_limit,
-            workspace_id=workspace.id,
+            workspace=workspace,
             project_id=project_id,
             created_by=request.user,
             external_id=external_id,
@@ -569,8 +582,12 @@ class GenericAssetEndpoint(BaseAPIView):
         )
 
         # Get the presigned URL
-        storage = S3Storage(request=request, is_server=True)
-        presigned_url = storage.generate_presigned_post(object_name=asset_key, file_type=type, file_size=size_limit)
+        require_upload_access(request, slug, asset)
+        storage = S3Storage(request=request)
+        presigned_url = require_upload_data(
+            storage.generate_presigned_post(object_name=asset_key, file_type=type, file_size=size_limit)
+        )
+        asset.save()
 
         return Response(
             {
@@ -609,16 +626,41 @@ class GenericAssetEndpoint(BaseAPIView):
         and trigger metadata extraction.
         """
         try:
-            asset = FileAsset.objects.get(id=asset_id, workspace__slug=slug, is_deleted=False)
+            asset = FileAsset.objects.select_related("workspace").get(
+                id=asset_id, workspace__slug=slug, is_deleted=False
+            )
+            require_upload_access(request, slug, asset)
+            payload = GenericAssetUpdateSerializer(data=request.data, partial=True)
+            payload.is_valid(raise_exception=True)
+            if "issue_id" in payload.validated_data:
+                issue_project_id = asset.project_id
+                if issue_project_id is None:
+                    issue_project_id = Issue.objects.get(
+                        id=payload.validated_data["issue_id"],
+                        workspace=asset.workspace,
+                    ).project_id
+                issue, _member = require_issue_access(
+                    request,
+                    slug,
+                    issue_project_id,
+                    payload.validated_data["issue_id"],
+                    include_archived=True,
+                )
+                if asset.created_by_id != request.user.id or asset.issue_id not in {None, issue.id}:
+                    raise PermissionDenied("Only the uploader can bind an unbound attachment to a work item.")
+                if asset.project_id not in {None, issue.project_id}:
+                    raise PermissionDenied("The upload belongs to a different project.")
+                asset.issue = issue
+                asset.project = issue.project
 
             # Update is_uploaded status
-            asset.is_uploaded = request.data.get("is_uploaded", asset.is_uploaded)
+            asset.is_uploaded = payload.validated_data.get("is_uploaded", asset.is_uploaded)
 
             # Update storage metadata if not present
             if not asset.storage_metadata:
-                get_asset_object_metadata.delay(asset_id=str(asset_id))
+                content_task_delay(get_asset_object_metadata, asset_id=str(asset_id))
 
-            asset.save(update_fields=["is_uploaded"])
+            asset.save(update_fields=["is_uploaded", "issue", "project", "updated_by"])
 
             return Response(status=status.HTTP_204_NO_CONTENT)
         except FileAsset.DoesNotExist:

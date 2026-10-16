@@ -29,6 +29,7 @@ from plane.api.serializers import (
 from plane.app.permissions import ProjectEntityPermission
 from plane.bgtasks.issue_activities_task import issue_activity
 from plane.utils.act_as import content_task_delay, content_bulk_authors
+from plane.utils.permissions.issue import AggregateIssueVisibilityPermission
 from plane.db.models import (
     Issue,
     FileAsset,
@@ -82,7 +83,7 @@ class ModuleListCreateAPIEndpoint(BaseAPIView):
     serializer_class = ModuleSerializer
     model = Module
     webhook_event = "module"
-    permission_classes = [ProjectEntityPermission]
+    permission_classes = [ProjectEntityPermission, AggregateIssueVisibilityPermission]
     use_read_replica = True
 
     def get_queryset(self):
@@ -274,9 +275,9 @@ class ModuleListCreateAPIEndpoint(BaseAPIView):
         return self.paginate(
             request=request,
             queryset=(self.get_queryset().filter(archived_at__isnull=True)),
-            on_results=lambda modules: ModuleSerializer(
-                modules, many=True, fields=self.fields, expand=self.expand
-            ).data,
+            on_results=lambda modules: (
+                ModuleSerializer(modules, many=True, fields=self.fields, expand=self.expand).data
+            ),
         )
 
 
@@ -285,7 +286,7 @@ class ModuleListLiteAPIEndpoint(BaseAPIView):
 
     serializer_class = ModuleLiteSerializer
     model = Module
-    permission_classes = [ProjectEntityPermission]
+    permission_classes = [ProjectEntityPermission, AggregateIssueVisibilityPermission]
     use_read_replica = True
 
     @module_docs(
@@ -332,7 +333,7 @@ class ModuleDetailAPIEndpoint(BaseAPIView):
     """Module Detail Endpoint"""
 
     model = Module
-    permission_classes = [ProjectEntityPermission]
+    permission_classes = [ProjectEntityPermission, AggregateIssueVisibilityPermission]
     serializer_class = ModuleSerializer
     webhook_event = "module"
     use_read_replica = True
@@ -593,7 +594,7 @@ class ModuleIssueListCreateAPIEndpoint(BaseAPIView):
     serializer_class = ModuleIssueSerializer
     model = ModuleIssue
     webhook_event = "module_issue"
-    permission_classes = [ProjectEntityPermission]
+    permission_classes = [ProjectEntityPermission, AggregateIssueVisibilityPermission]
     use_read_replica = True
 
     def get_queryset(self):
@@ -763,7 +764,9 @@ class ModuleIssueListCreateAPIEndpoint(BaseAPIView):
         ModuleIssue.objects.bulk_create(content_bulk_authors(record_to_create), batch_size=10, ignore_conflicts=True)
 
         ModuleIssue.objects.bulk_update(
-            content_bulk_authors(records_to_update, update=True), ["module", "updated_by"], batch_size=10,
+            content_bulk_authors(records_to_update, update=True),
+            ["module", "updated_by"],
+            batch_size=10,
         )
 
         # Capture Issue Activity
@@ -803,7 +806,7 @@ class ModuleIssueDetailAPIEndpoint(BaseAPIView):
     bulk = True
     use_read_replica = True
 
-    permission_classes = [ProjectEntityPermission]
+    permission_classes = [ProjectEntityPermission, AggregateIssueVisibilityPermission]
 
     def get_queryset(self):
         return (
@@ -947,7 +950,7 @@ class ModuleIssueDetailAPIEndpoint(BaseAPIView):
 
 
 class ModuleArchiveUnarchiveAPIEndpoint(BaseAPIView):
-    permission_classes = [ProjectEntityPermission]
+    permission_classes = [ProjectEntityPermission, AggregateIssueVisibilityPermission]
     use_read_replica = True
 
     def get_queryset(self):
@@ -1070,9 +1073,9 @@ class ModuleArchiveUnarchiveAPIEndpoint(BaseAPIView):
         return self.paginate(
             request=request,
             queryset=(self.get_queryset()),
-            on_results=lambda modules: ModuleSerializer(
-                modules, many=True, fields=self.fields, expand=self.expand
-            ).data,
+            on_results=lambda modules: (
+                ModuleSerializer(modules, many=True, fields=self.fields, expand=self.expand).data
+            ),
         )
 
     @module_docs(

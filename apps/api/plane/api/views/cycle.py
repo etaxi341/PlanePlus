@@ -37,6 +37,7 @@ from plane.api.serializers import (
 from plane.app.permissions import ProjectEntityPermission
 from plane.bgtasks.issue_activities_task import issue_activity
 from plane.utils.act_as import content_task_delay, content_bulk_authors
+from plane.utils.permissions.issue import AggregateIssueVisibilityPermission
 from plane.db.models import (
     Cycle,
     CycleIssue,
@@ -86,7 +87,7 @@ class CycleListCreateAPIEndpoint(BaseAPIView):
     serializer_class = CycleSerializer
     model = Cycle
     webhook_event = "cycle"
-    permission_classes = [ProjectEntityPermission]
+    permission_classes = [ProjectEntityPermission, AggregateIssueVisibilityPermission]
     use_read_replica = True
 
     def get_queryset(self):
@@ -218,13 +219,15 @@ class CycleListCreateAPIEndpoint(BaseAPIView):
             return self.paginate(
                 request=request,
                 queryset=(queryset),
-                on_results=lambda cycles: CycleSerializer(
-                    cycles,
-                    many=True,
-                    fields=self.fields,
-                    expand=self.expand,
-                    context={"project": project},
-                ).data,
+                on_results=lambda cycles: (
+                    CycleSerializer(
+                        cycles,
+                        many=True,
+                        fields=self.fields,
+                        expand=self.expand,
+                        context={"project": project},
+                    ).data
+                ),
             )
 
         # Completed Cycles
@@ -233,13 +236,15 @@ class CycleListCreateAPIEndpoint(BaseAPIView):
             return self.paginate(
                 request=request,
                 queryset=(queryset),
-                on_results=lambda cycles: CycleSerializer(
-                    cycles,
-                    many=True,
-                    fields=self.fields,
-                    expand=self.expand,
-                    context={"project": project},
-                ).data,
+                on_results=lambda cycles: (
+                    CycleSerializer(
+                        cycles,
+                        many=True,
+                        fields=self.fields,
+                        expand=self.expand,
+                        context={"project": project},
+                    ).data
+                ),
             )
 
         # Draft Cycles
@@ -248,13 +253,15 @@ class CycleListCreateAPIEndpoint(BaseAPIView):
             return self.paginate(
                 request=request,
                 queryset=(queryset),
-                on_results=lambda cycles: CycleSerializer(
-                    cycles,
-                    many=True,
-                    fields=self.fields,
-                    expand=self.expand,
-                    context={"project": project},
-                ).data,
+                on_results=lambda cycles: (
+                    CycleSerializer(
+                        cycles,
+                        many=True,
+                        fields=self.fields,
+                        expand=self.expand,
+                        context={"project": project},
+                    ).data
+                ),
             )
 
         # Incomplete Cycles
@@ -263,24 +270,28 @@ class CycleListCreateAPIEndpoint(BaseAPIView):
             return self.paginate(
                 request=request,
                 queryset=(queryset),
-                on_results=lambda cycles: CycleSerializer(
+                on_results=lambda cycles: (
+                    CycleSerializer(
+                        cycles,
+                        many=True,
+                        fields=self.fields,
+                        expand=self.expand,
+                        context={"project": project},
+                    ).data
+                ),
+            )
+        return self.paginate(
+            request=request,
+            queryset=(queryset),
+            on_results=lambda cycles: (
+                CycleSerializer(
                     cycles,
                     many=True,
                     fields=self.fields,
                     expand=self.expand,
                     context={"project": project},
-                ).data,
-            )
-        return self.paginate(
-            request=request,
-            queryset=(queryset),
-            on_results=lambda cycles: CycleSerializer(
-                cycles,
-                many=True,
-                fields=self.fields,
-                expand=self.expand,
-                context={"project": project},
-            ).data,
+                ).data
+            ),
         )
 
     @cycle_docs(
@@ -364,7 +375,7 @@ class CycleListLiteAPIEndpoint(BaseAPIView):
 
     serializer_class = CycleLiteSerializer
     model = Cycle
-    permission_classes = [ProjectEntityPermission]
+    permission_classes = [ProjectEntityPermission, AggregateIssueVisibilityPermission]
     use_read_replica = True
 
     @cycle_docs(
@@ -415,7 +426,7 @@ class CycleDetailAPIEndpoint(BaseAPIView):
     serializer_class = CycleSerializer
     model = Cycle
     webhook_event = "cycle"
-    permission_classes = [ProjectEntityPermission]
+    permission_classes = [ProjectEntityPermission, AggregateIssueVisibilityPermission]
     use_read_replica = True
 
     def get_queryset(self):
@@ -666,7 +677,7 @@ class CycleDetailAPIEndpoint(BaseAPIView):
 class CycleArchiveUnarchiveAPIEndpoint(BaseAPIView):
     """Cycle Archive and Unarchive Endpoint"""
 
-    permission_classes = [ProjectEntityPermission]
+    permission_classes = [ProjectEntityPermission, AggregateIssueVisibilityPermission]
     use_read_replica = True
 
     def get_queryset(self):
@@ -859,7 +870,7 @@ class CycleIssueListCreateAPIEndpoint(BaseAPIView):
     serializer_class = CycleIssueSerializer
     model = CycleIssue
     webhook_event = "cycle_issue"
-    permission_classes = [ProjectEntityPermission]
+    permission_classes = [ProjectEntityPermission, AggregateIssueVisibilityPermission]
     use_read_replica = True
 
     def get_queryset(self):
@@ -1011,15 +1022,17 @@ class CycleIssueListCreateAPIEndpoint(BaseAPIView):
 
         # New issues to create
         created_records = CycleIssue.objects.bulk_create(
-            content_bulk_authors([
-                CycleIssue(
-                    project_id=project_id,
-                    workspace_id=cycle.workspace_id,
-                    cycle_id=cycle_id,
-                    issue_id=issue,
-                )
-                for issue in new_issues
-            ]),
+            content_bulk_authors(
+                [
+                    CycleIssue(
+                        project_id=project_id,
+                        workspace_id=cycle.workspace_id,
+                        cycle_id=cycle_id,
+                        issue_id=issue,
+                    )
+                    for issue in new_issues
+                ]
+            ),
             ignore_conflicts=True,
             batch_size=10,
         )
@@ -1045,7 +1058,9 @@ class CycleIssueListCreateAPIEndpoint(BaseAPIView):
 
         # Update the cycle issues
         CycleIssue.objects.bulk_update(
-            content_bulk_authors(updated_records, update=True), ["cycle_id", "updated_by"], batch_size=100,
+            content_bulk_authors(updated_records, update=True),
+            ["cycle_id", "updated_by"],
+            batch_size=100,
         )
 
         # Capture Issue Activity
@@ -1084,7 +1099,7 @@ class CycleIssueDetailAPIEndpoint(BaseAPIView):
     model = CycleIssue
     webhook_event = "cycle_issue"
     bulk = True
-    permission_classes = [ProjectEntityPermission]
+    permission_classes = [ProjectEntityPermission, AggregateIssueVisibilityPermission]
     use_read_replica = True
 
     def get_queryset(self):

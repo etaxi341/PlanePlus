@@ -660,7 +660,8 @@ def test_capabilities_and_resolver_are_admin_only_and_work_when_disabled(team, s
     client = client_for(team.token)
     response = client.get(f"{base}act-as-capabilities/")
     assert response.status_code == 200, response.content
-    assert response.data["version"] == 3 and response.data["enabled"] is False
+    assert response.data["version"] == 4 and response.data["enabled"] is False
+    assert response.data["attachments"]["guest_uploads"] and response.data["attachments"]["generic_uploads"]
     assert response.data["intake_target_date"] is True
     assert response.data["ticket_inline_assets"]["https_only"] is True
     assert response.data["reads_as_target"] and response.data["public_project_join"]
@@ -1470,6 +1471,532 @@ def test_guest_can_read_inline_images_on_visible_intakes_but_not_hidden_tickets(
     Issue.objects.filter(id=team.issue.id).update(created_by=team.other)
     db_models.FileAsset.objects.filter(id=inline_image.asset.id).update(issue=team.issue)
     assert client.get(inline_image.url, **headers(team.target)).status_code == 403
+
+
+@pytest.fixture
+def file_storage(monkeypatch):
+    storage = Mock()
+    storage.return_value.generate_presigned_post.return_value = {
+        "url": "https://storage.example/upload",
+        "fields": {"policy": "signed-policy"},
+    }
+    storage.return_value.generate_presigned_url.return_value = "https://storage.example/download?signature=example"
+    monkeypatch.setattr("plane.api.views.issue.S3Storage", storage)
+    monkeypatch.setattr("plane.api.views.asset.S3Storage", storage)
+    return storage
+
+
+@pytest.mark.parametrize("role", [5, 15, 20])
+@pytest.mark.parametrize("intake", [False, True])
+@pytest.mark.parametrize("delegated", [False, True])
+def test_attachment_full_lifecycle_has_same_user_rights_for_all_roles(
+    team, intake_url, file_storage, role, intake, delegated
+):
+    WorkspaceMember.objects.filter(workspace=team.workspace, member=team.target).update(role=role)
+    ProjectMember.objects.filter(project=team.project, member=team.target).update(role=role)
+    Project.objects.filter(id=team.project.id).update(guest_view_all_features=False)
+    issue = submit_intake(team, intake_url, team.target, "Attachment intake").issue if intake else team.issue
+    client, extra = guest_intake_client(team, delegated)
+    url = f"{items(team)}{issue.id}/attachments/"
+    created = client.post(
+        url,
+        {
+            "name": "message.eml",
+            "type": "message/rfc822",
+            "size": 12,
+            "external_id": "external-message",
+            "external_source": "chatbot",
+        },
+        format="json",
+        **extra,
+    )
+    assert created.status_code == 200, created.content
+    asset = db_models.FileAsset.objects.get(id=created.data["asset_id"])
+    assert asset.created_by_id == team.target.id and asset.external_id == "external-message"
+    confirmed = client.patch(f"{url}{asset.id}/", {"is_uploaded": True}, format="json", **extra)
+    assert confirmed.status_code == 204, confirmed.content
+    asset.refresh_from_db()
+    assert asset.is_uploaded and asset.created_by_id == asset.updated_by_id == team.target.id
+    listed = client.get(url, **extra)
+    assert listed.status_code == 200 and str(asset.id) in str(listed.data)
+    downloaded = client.get(f"{url}{asset.id}/", **extra)
+    assert downloaded.status_code == 302 and downloaded["Location"].startswith("https://")
+    removed = client.delete(f"{url}{asset.id}/", {}, format="json", **extra)
+    assert removed.status_code == 204, removed.content
+    if delegated:
+        for response in (created, confirmed, listed, downloaded, removed):
+            audit = audit_for(response)
+            assert audit.actor_id == team.admin.id and audit.target_user_id == team.target.id and audit.succeeded
+            assert response["X-PlanePlus-Act-As-User"] == str(team.target.id)
+
+
+@pytest.mark.parametrize("role", [5, 15, 20])
+@pytest.mark.parametrize("delegated", [False, True])
+def test_generic_upload_confirm_and_bind_is_usable_as_the_effective_user(
+    team, intake_url, file_storage, role, delegated
+):
+    WorkspaceMember.objects.filter(workspace=team.workspace, member=team.target).update(role=role)
+    ProjectMember.objects.filter(project=team.project, member=team.target).update(role=role)
+    issue = submit_intake(team, intake_url, team.target, "Bind upload").issue
+    client, extra = guest_intake_client(team, delegated)
+    url = f"/api/v1/workspaces/{team.workspace.slug}/assets/"
+    created = client.post(url, {"name": "archive.zip", "size": 12, "type": "application/zip"}, format="json", **extra)
+    assert created.status_code == 200, created.content
+    asset = db_models.FileAsset.objects.get(id=created.data["asset_id"])
+    assert asset.project_id is None and asset.issue_id is None and asset.created_by_id == team.target.id
+    confirmed = client.patch(f"{url}{asset.id}/", {"is_uploaded": True}, format="json", **extra)
+    assert confirmed.status_code == 204, confirmed.content
+    bound = client.patch(f"{url}{asset.id}/", {"issue_id": str(issue.id)}, format="json", **extra)
+    assert bound.status_code == 204, bound.content
+    asset.refresh_from_db()
+    assert asset.issue_id == issue.id and asset.project_id == team.project.id and asset.is_uploaded
+    downloaded = client.get(f"{url}{asset.id}/", **extra)
+    assert downloaded.status_code == 200, downloaded.content
+    assert str(asset.id) in str(client.get(f"{items(team)}{issue.id}/attachments/", **extra).data)
+    if delegated:
+        assert audit_for(bound).project_id == team.project.id and audit_for(bound).issue_id == issue.id
+
+
+@pytest.mark.parametrize(
+    "family",
+    [
+        "states/",
+        "labels/",
+        "cycles/",
+        "cycles-lite/",
+        "modules/",
+        "modules-lite/",
+        "estimates/",
+        "members/",
+        "project-members-lite/",
+        "intake-issues/",
+    ],
+)
+@pytest.mark.parametrize("role", [5, 15, 20])
+def test_registered_content_read_permissions_match_direct_user_calls(team, family, role):
+    WorkspaceMember.objects.filter(workspace=team.workspace, member=team.target).update(role=role)
+    ProjectMember.objects.filter(project=team.project, member=team.target).update(role=role)
+    direct = client_for(APIToken.objects.create(user=team.target))
+    delegated = client_for(team.token)
+    url = f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/{family}"
+    normal = direct.get(url)
+    acting = delegated.get(url, **headers(team.target))
+    assert normal.status_code == acting.status_code, (normal.content, acting.content)
+    if normal.status_code < 300:
+        assert normal.data == acting.data
+
+
+@pytest.mark.parametrize("intake", [False, True])
+def test_guest_cannot_upload_to_hidden_foreign_ticket_even_via_generic_assets(team, guest_intake, file_storage, intake):
+    issue = (
+        submit_intake(team, guest_intake, team.other, "Hidden intake").issue
+        if intake
+        else Issue.objects.create(
+            project=team.project,
+            name="Hidden ticket",
+            created_by_id=team.other.id,
+        )
+    )
+    client = client_for(team.token)
+    url = f"{items(team)}{issue.id}/attachments/"
+    response = client.post(
+        url, {"name": "file.pdf", "type": "application/pdf", "size": 12}, format="json", **headers(team.target)
+    )
+    assert response.status_code == 403, response.content
+    assert not db_models.FileAsset.objects.filter(issue=issue).exists()
+    file_storage.assert_not_called()
+
+
+@pytest.mark.parametrize("delegated", [False, True])
+@pytest.mark.parametrize("size", [0, -1, "not-size", 1001])
+def test_upload_size_validation_happens_before_signing_or_persisting(team, file_storage, settings, delegated, size):
+    settings.FILE_SIZE_LIMIT = 1000
+    client, extra = guest_intake_client(team, delegated)
+    for url in (f"{items(team)}{team.issue.id}/attachments/", f"/api/v1/workspaces/{team.workspace.slug}/assets/"):
+        response = client.post(url, {"name": "file.bin", "size": size}, format="json", **extra)
+        assert response.status_code == 400, response.content
+    assert not db_models.FileAsset.objects.exists()
+    file_storage.assert_not_called()
+
+
+@pytest.mark.parametrize("delegated", [False, True])
+def test_generic_uploads_cannot_take_other_users_unbound_files_or_move_projects(team, file_storage, delegated):
+    asset = db_models.FileAsset.objects.create(
+        workspace=team.workspace,
+        asset=f"{team.workspace.id}/private.pdf",
+        created_by=team.other,
+        entity_type="ISSUE_ATTACHMENT",
+    )
+    # Outside a request BaseModel does not preserve a supplied created_by; make
+    # the identity snapshot explicit for this owner-isolation regression.
+    db_models.FileAsset.objects.filter(id=asset.id).update(created_by=team.other)
+    client, extra = guest_intake_client(team, delegated)
+    url = f"/api/v1/workspaces/{team.workspace.slug}/assets/{asset.id}/"
+    assert client.get(url, **extra).status_code == 403
+    assert (
+        client.patch(url, {"is_uploaded": True, "issue_id": str(team.issue.id)}, format="json", **extra).status_code
+        == 403
+    )
+    asset.refresh_from_db()
+    assert asset.issue_id is None and not asset.is_uploaded
+    file_storage.assert_not_called()
+
+
+def test_attachment_storage_failure_is_not_reported_as_success(team, file_storage):
+    file_storage.return_value.generate_presigned_post.return_value = None
+    response = client_for(team.token).post(
+        f"{items(team)}{team.issue.id}/attachments/",
+        {"name": "file.pdf", "size": 12},
+        format="json",
+        **headers(team.target),
+    )
+    assert response.status_code == 503, response.content
+    assert not audit_for(response).succeeded and not db_models.FileAsset.objects.exists()
+
+
+@pytest.fixture
+def local_s3_transport(monkeypatch):
+    """A local S3 POST/GET protocol fixture, not a live MinIO deployment.
+
+    Uses the REAL boto3 signer and real HTTP/multipart bytes. The receiver checks
+    the POST-policy HMAC and size/type bounds; no external network is involved.
+    """
+    import base64
+    import hashlib
+    import hmac
+    from io import BytesIO
+    from django.http.multipartparser import MultiPartParser
+    from django.core.files.uploadhandler import MemoryFileUploadHandler
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from threading import Thread
+    from urllib.parse import unquote, urlsplit, parse_qs
+
+    class StorageHandler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_POST(self):
+            body = self.rfile.read(int(self.headers["Content-Length"]))
+            fields, files = MultiPartParser(
+                {"CONTENT_TYPE": self.headers["Content-Type"], "CONTENT_LENGTH": len(body)},
+                BytesIO(body),
+                [MemoryFileUploadHandler()],
+                "utf-8",
+            ).parse()
+            content = files["file"].read()
+            scope = fields["x-amz-credential"].split("/")
+            key = b"AWS4testing-secret"
+            for value in scope[1:]:
+                key = hmac.new(key, value.encode(), hashlib.sha256).digest()
+            signature = hmac.new(key, fields["policy"].encode(), hashlib.sha256).hexdigest()
+            policy = json.loads(base64.b64decode(fields["policy"]))
+            bounds = next(
+                condition
+                for condition in policy["conditions"]
+                if isinstance(condition, list) and condition[0] == "content-length-range"
+            )
+            valid = hmac.compare_digest(signature, fields["x-amz-signature"]) and bounds[1] <= len(content) <= bounds[2]
+            valid = valid and {"Content-Type": fields["Content-Type"]} in policy["conditions"]
+            self.server.received_headers.append(dict(self.headers))
+            if valid:
+                self.server.objects[fields["key"]] = content
+            self.send_response(204 if valid else 403)
+            self.end_headers()
+
+        def do_GET(self):
+            parsed = urlsplit(self.path)
+            key = unquote(parsed.path).removeprefix("/uploads/")
+            content = self.server.objects.get(key)
+            valid = content is not None and bool(parse_qs(parsed.query).get("X-Amz-Signature"))
+            self.server.received_headers.append(dict(self.headers))
+            self.send_response(200 if valid else 404)
+            self.end_headers()
+            if valid:
+                self.wfile.write(content)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), StorageHandler)
+    server.objects, server.received_headers = {}, []
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    for key, value in {
+        "USE_MINIO": "0",
+        "AWS_ACCESS_KEY_ID": "testing",
+        "AWS_SECRET_ACCESS_KEY": "testing-secret",
+        "AWS_REGION": "us-east-1",
+        "AWS_S3_BUCKET_NAME": "uploads",
+        "AWS_S3_ENDPOINT_URL": f"http://127.0.0.1:{server.server_port}",
+    }.items():
+        monkeypatch.setenv(key, value)
+    try:
+        yield server
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@pytest.mark.parametrize("delegated", [False, True])
+@pytest.mark.parametrize("generic", [False, True])
+def test_guest_intake_attachment_real_signed_multipart_roundtrip(
+    team, guest_intake, local_s3_transport, delegated, generic
+):
+    import requests
+
+    issue = submit_intake(team, guest_intake, team.target, "Real file transport").issue
+    client, extra = guest_intake_client(team, delegated)
+    attachments = f"{items(team)}{issue.id}/attachments/"
+    assets = f"/api/v1/workspaces/{team.workspace.slug}/assets/"
+    payload = b"From: person@example.com\r\nSubject: An attachment\r\n\r\nReal file content\x00\xff"
+    created = client.post(
+        assets if generic else attachments,
+        {"name": "message.eml", "type": "message/rfc822", "size": len(payload)},
+        format="json",
+        **extra,
+    )
+    assert created.status_code == 200, created.content
+    upload = created.data["upload_data"]
+    transferred = requests.post(
+        upload["url"], data=upload["fields"], files={"file": ("message.eml", payload, "message/rfc822")}, timeout=5
+    )
+    assert transferred.status_code == 204, transferred.content
+    asset_id = created.data["asset_id"]
+    confirmation = {"is_uploaded": True, **({"issue_id": str(issue.id)} if generic else {})}
+    confirmed = client.patch(f"{assets if generic else attachments}{asset_id}/", confirmation, format="json", **extra)
+    assert confirmed.status_code == 204, confirmed.content
+    downloaded = client.get(f"{attachments}{asset_id}/", **extra)
+    assert downloaded.status_code == 302, downloaded.content
+    data = requests.get(downloaded["Location"], timeout=5)
+    assert data.status_code == 200 and data.content == payload
+    for request_headers in local_s3_transport.received_headers:
+        assert not {"x-api-key", "x-planeplus-act-as-user", "x-planeplus-act-as-reason"} & {
+            name.lower() for name in request_headers
+        }
+    asset = db_models.FileAsset.objects.get(id=asset_id)
+    assert asset.created_by_id == team.target.id and asset.issue_id == issue.id and asset.is_uploaded
+
+
+@pytest.mark.parametrize("role", [5, 15, 20])
+@pytest.mark.parametrize(
+    "family,payload",
+    [
+        ("work-items/", {"name": "Parity item"}),
+        ("labels/", {"name": "Parity label"}),
+        ("states/", {"name": "Parity state", "color": "#00ff00", "group": "started"}),
+        ("cycles/", {"name": "Parity cycle"}),
+        ("modules/", {"name": "Parity module"}),
+        ("estimates/", {"name": "Parity estimate", "type": "points"}),
+        ("intake-issues/", {"issue": {"name": "Parity intake"}}),
+    ],
+)
+def test_content_creation_permission_matrix_matches_direct_user(team, intake_url, file_storage, role, family, payload):
+    WorkspaceMember.objects.filter(workspace=team.workspace, member=team.target).update(role=role)
+    ProjectMember.objects.filter(project=team.project, member=team.target).update(role=role)
+    Project.objects.filter(id=team.project.id).update(cycle_view=True, module_view=True)
+    url = f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/{family}"
+    direct = client_for(APIToken.objects.create(user=team.target))
+    with transaction.atomic():
+        normal = direct.post(url, payload, format="json")
+        transaction.set_rollback(True)
+    acting = client_for(team.token).post(url, payload, format="json", **headers(team.target))
+    assert normal.status_code == acting.status_code, (normal.content, acting.content)
+    assert audit_for(acting).succeeded is (acting.status_code < 300)
+
+
+@pytest.mark.parametrize("role", [5, 15, 20])
+def test_personal_notes_support_normal_crud_without_access_to_other_owners(team, role):
+    WorkspaceMember.objects.filter(workspace=team.workspace, member=team.target).update(role=role)
+    url = f"/api/v1/workspaces/{team.workspace.slug}/stickies/"
+    client = client_for(team.token)
+    created = client.post(
+        url, {"name": "Personal note", "description_html": "<p>Mine</p>"}, format="json", **headers(team.target)
+    )
+    assert created.status_code == 201, created.content
+    sticky = db_models.Sticky.objects.get(id=created.data["id"])
+    assert sticky.owner_id == sticky.created_by_id == team.target.id
+    assert client.get(url, **headers(team.target)).status_code == 200
+    detail = f"{url}{sticky.id}/"
+    assert client.get(detail, **headers(team.target)).status_code == 200
+    for method in ("patch", "put"):
+        updated = getattr(client, method)(
+            detail, {"name": "Edited personal note"}, format="json", **headers(team.target)
+        )
+        assert updated.status_code == 200, updated.content
+    foreign = db_models.Sticky.objects.create(workspace=team.workspace, owner=team.other, name="Not yours")
+    assert (
+        client.patch(f"{url}{foreign.id}/", {"name": "Takeover"}, format="json", **headers(team.target)).status_code
+        == 404
+    )
+    assert client.patch(detail, {"owner": str(team.other.id)}, format="json", **headers(team.target)).status_code == 400
+    assert client.delete(detail, {}, format="json", **headers(team.target)).status_code == 204
+
+
+def test_identifier_reads_and_target_timezone_match_self_interaction(team):
+    User.objects.filter(id=team.target.id).update(user_timezone="Asia/Tokyo")
+    normal = client_for(APIToken.objects.create(user=team.target)).get(f"{items(team)}{team.issue.id}/")
+    url = f"/api/v1/workspaces/{team.workspace.slug}/work-items/{team.project.identifier}-{team.issue.sequence_id}/"
+    response = client_for(team.token).get(url, **headers(team.target))
+    assert response.status_code == 200, response.content
+    assert normal.data == response.data
+    assert audit_for(response).resource_id == audit_for(response).issue_id == team.issue.id
+
+
+def test_cycle_transfer_is_audited_scoped_and_attributed_to_the_target(team):
+    old = db_models.Cycle.objects.create(
+        project=team.project, name="Source", owned_by=team.target, end_date=timezone.now() - timedelta(days=1)
+    )
+    new = db_models.Cycle.objects.create(project=team.project, name="Destination", owned_by=team.target)
+    db_models.CycleIssue.objects.create(project=team.project, cycle=old, issue=team.issue)
+    url = f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/cycles/{old.id}/transfer-issues/"
+    response = client_for(team.token).post(url, {"new_cycle_id": str(new.id)}, format="json", **headers(team.target))
+    assert response.status_code == 200, response.content
+    assignment = db_models.CycleIssue.objects.get(issue=team.issue)
+    assert assignment.cycle_id == new.id and assignment.updated_by_id == team.target.id
+    assert audit_for(response).resource_id == old.id
+    foreign = Project.objects.create(workspace=team.workspace, name="Foreign", identifier="FOREIGN")
+    foreign_cycle = db_models.Cycle.objects.create(project=foreign, name="Secret", owned_by=team.other)
+    denied = client_for(team.token).post(
+        url, {"new_cycle_id": str(foreign_cycle.id)}, format="json", **headers(team.target)
+    )
+    assert denied.status_code == 403
+
+
+def test_guest_submission_can_initialize_missing_intake_and_triage_like_normal_create(team, guest_intake):
+    db_models.Intake.objects.filter(project=team.project).delete()
+    State.triage_objects.filter(project=team.project).delete()
+    response = client_for(team.token).post(
+        guest_intake, {"issue": {"name": "First guest submission"}}, format="json", **headers(team.target)
+    )
+    assert response.status_code == 201, response.content
+    assert db_models.Intake.objects.filter(project=team.project, is_default=True).exists()
+    assert State.triage_objects.filter(project=team.project).exists()
+
+
+def test_workspace_admin_target_can_edit_metadata_without_artificial_project_admin_role(team):
+    WorkspaceMember.objects.filter(workspace=team.workspace, member=team.target).update(role=20)
+    ProjectMember.objects.filter(project=team.project, member=team.target).update(role=5)
+    url = f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/"
+    normal = client_for(APIToken.objects.create(user=team.target)).patch(url, {"name": "Self metadata"}, format="json")
+    acting = client_for(team.token).patch(url, {"name": "Delegated metadata"}, format="json", **headers(team.target))
+    assert normal.status_code == acting.status_code == 200, (normal.content, acting.content)
+
+
+@pytest.mark.parametrize("delegated", [False, True])
+@pytest.mark.parametrize("visible", [False, True])
+def test_guest_attachment_visibility_cannot_be_bypassed_by_generic_endpoint(
+    team,
+    guest_intake,
+    file_storage,
+    delegated,
+    visible,
+):
+    intake = submit_intake(team, guest_intake, team.other, "Foreign submission")
+    Project.objects.filter(id=team.project.id).update(guest_view_all_features=visible)
+    asset = db_models.FileAsset.objects.create(
+        workspace=team.workspace,
+        project=team.project,
+        issue=intake.issue,
+        asset=f"{team.workspace.id}/foreign.pdf",
+        created_by=team.other,
+        entity_type="ISSUE_ATTACHMENT",
+        is_uploaded=True,
+    )
+    client, extra = guest_intake_client(team, delegated)
+    attachments = f"{items(team)}{intake.issue_id}/attachments/"
+    generic = f"/api/v1/workspaces/{team.workspace.slug}/assets/{asset.id}/"
+    assert client.get(attachments, **extra).status_code == (200 if visible else 403)
+    assert client.get(f"{attachments}{asset.id}/", **extra).status_code == (302 if visible else 403)
+    assert client.get(generic, **extra).status_code == (200 if visible else 403)
+    if not visible:
+        assert client.patch(generic, {"is_uploaded": True}, format="json", **extra).status_code == 403
+        assert client.delete(f"{attachments}{asset.id}/", {}, format="json", **extra).status_code == 403
+        file_storage.assert_not_called()
+
+
+@pytest.mark.parametrize("delegated", [False, True])
+def test_attachment_upload_uses_intake_submission_owner_not_imported_issue_author(
+    team,
+    guest_intake,
+    file_storage,
+    delegated,
+):
+    intake = submit_intake(team, guest_intake, team.target, "Imported ticket")
+    Issue.objects.filter(id=intake.issue_id).update(created_by=team.other)
+    client, extra = guest_intake_client(team, delegated)
+    response = client.post(
+        f"{items(team)}{intake.issue_id}/attachments/", {"name": "file.eml", "size": 12}, format="json", **extra
+    )
+    assert response.status_code == 200, response.content
+
+
+@pytest.mark.parametrize("delegated", [False, True])
+def test_generic_upload_cannot_be_moved_to_a_different_project(team, file_storage, delegated):
+    client, extra = guest_intake_client(team, delegated)
+    url = f"/api/v1/workspaces/{team.workspace.slug}/assets/"
+    created = client.post(
+        url, {"name": "file.pdf", "size": 12, "project_id": str(team.project.id)}, format="json", **extra
+    )
+    assert created.status_code == 200, created.content
+    project = Project.objects.create(workspace=team.workspace, name="Other", identifier="OTHER")
+    ProjectMember.objects.create(workspace=team.workspace, project=project, member=team.target, role=15)
+    issue = Issue.objects.create(project=project, name="Other project item")
+    denied = client.patch(f"{url}{created.data['asset_id']}/", {"issue_id": str(issue.id)}, format="json", **extra)
+    assert denied.status_code in {403, 404}, denied.content
+    asset = db_models.FileAsset.objects.get(id=created.data["asset_id"])
+    assert asset.project_id == team.project.id and asset.issue_id is None
+
+
+@pytest.mark.parametrize("delegated", [False, True])
+@pytest.mark.parametrize("revocation", ["project_member", "workspace_member", "archived_project", "draft"])
+def test_attachment_access_is_rechecked_after_membership_or_ticket_changes(team, file_storage, delegated, revocation):
+    client, extra = guest_intake_client(team, delegated)
+    url = f"{items(team)}{team.issue.id}/attachments/"
+    created = client.post(url, {"name": "file.pdf", "size": 12}, format="json", **extra)
+    assert created.status_code == 200, created.content
+    if revocation == "project_member":
+        ProjectMember.objects.filter(project=team.project, member=team.target).update(is_active=False)
+    elif revocation == "workspace_member":
+        WorkspaceMember.objects.filter(workspace=team.workspace, member=team.target).update(is_active=False)
+    elif revocation == "archived_project":
+        Project.objects.filter(id=team.project.id).update(archived_at=timezone.now())
+    else:
+        Issue.objects.filter(id=team.issue.id).update(is_draft=True)
+    response = client.patch(f"{url}{created.data['asset_id']}/", {"is_uploaded": True}, format="json", **extra)
+    assert response.status_code in {403, 404}, response.content
+    assert not db_models.FileAsset.objects.get(id=created.data["asset_id"]).is_uploaded
+
+
+@pytest.mark.parametrize("generic", [False, True])
+def test_attachment_audit_failure_rolls_back_file_record_and_redacts_signed_policy(
+    team,
+    file_storage,
+    monkeypatch,
+    isolated_act_as,
+    generic,
+):
+    client = client_for(team.token)
+    url = (
+        f"/api/v1/workspaces/{team.workspace.slug}/assets/" if generic else f"{items(team)}{team.issue.id}/attachments/"
+    )
+    created = client.post(url, {"name": "file.pdf", "size": 12}, format="json", **headers(team.target))
+    assert created.status_code == 200, created.content
+    assert created["Cache-Control"] == "private, no-store"
+    assert isolated_act_as.logs.call_args.kwargs["log_data"]["response_body"] == "[REDACTED]"
+    monkeypatch.setattr(ImpersonationAudit.objects, "create", Mock(side_effect=IntegrityError("audit unavailable")))
+    failed = client.post(url, {"name": "second.pdf", "size": 12}, format="json", **headers(team.target))
+    assert failed.status_code == 503, failed.content
+    assert "signed-policy" not in str(failed.content)
+    assert db_models.FileAsset.objects.count() == 1
+
+
+@pytest.mark.parametrize("family", ["cycles/", "cycles-lite/", "modules/", "modules-lite/"])
+@pytest.mark.parametrize("visible", [False, True])
+def test_guest_aggregate_reads_never_bypass_hidden_ticket_visibility(team, guest_intake, family, visible):
+    Project.objects.filter(id=team.project.id).update(guest_view_all_features=visible)
+    url = f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/{family}"
+    direct, _extra = guest_intake_client(team, False)
+    normal = direct.get(url)
+    acting = client_for(team.token).get(url, **headers(team.target))
+    assert normal.status_code == acting.status_code == (200 if visible else 403)
 
 
 @pytest.mark.django_db(transaction=True)

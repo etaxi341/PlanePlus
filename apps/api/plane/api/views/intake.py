@@ -55,9 +55,16 @@ from plane.utils.openapi import (
 
 def filter_guest_intakes(queryset, user, project):
     """Match the app's intake visibility, using the intake entry's creator."""
-    if not project.guest_view_all_features and ProjectMember.objects.filter(
-        project=project, workspace=project.workspace, member=user, is_active=True, role=5,
-    ).exists():
+    if (
+        not project.guest_view_all_features
+        and ProjectMember.objects.filter(
+            project=project,
+            workspace=project.workspace,
+            member=user,
+            is_active=True,
+            role=5,
+        ).exists()
+    ):
         return queryset.filter(created_by=user)
     return queryset
 
@@ -125,9 +132,9 @@ class IntakeIssueListCreateAPIEndpoint(BaseAPIView):
         return self.paginate(
             request=request,
             queryset=(issue_queryset),
-            on_results=lambda intake_issues: IntakeIssueSerializer(
-                intake_issues, many=True, fields=self.fields, expand=self.expand
-            ).data,
+            on_results=lambda intake_issues: (
+                IntakeIssueSerializer(intake_issues, many=True, fields=self.fields, expand=self.expand).data
+            ),
         )
 
     @intake_docs(
@@ -172,6 +179,13 @@ class IntakeIssueListCreateAPIEndpoint(BaseAPIView):
             return Response(
                 {"error": "Intake is not enabled for this project enable it through the project's api"},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+        if intake is None:
+            intake, _created = Intake.objects.get_or_create(
+                project=project,
+                workspace=project.workspace,
+                is_default=True,
+                defaults={"name": f"{project.name} Intake"},
             )
 
         # Check for valid priority
@@ -396,7 +410,8 @@ class IntakeIssueDetailAPIEndpoint(BaseAPIView):
             if project_member.role <= 5:
                 if "target_date" in issue_data:
                     return Response(
-                        {"error": "Only project members can change the due date"}, status=status.HTTP_403_FORBIDDEN,
+                        {"error": "Only project members can change the due date"},
+                        status=status.HTTP_403_FORBIDDEN,
                     )
                 description_json = issue_data.get("description") or issue_data.get("description_json") or {}
                 issue_data = {
@@ -509,7 +524,8 @@ class IntakeIssueDetailAPIEndpoint(BaseAPIView):
         if ProjectMember.objects.filter(project=project, member=request.user, is_active=True, role=5).exists():
             if intake_issue.created_by_id != request.user.id or intake_issue.issue.created_by_id != request.user.id:
                 return Response(
-                    {"error": "Guests can only delete their own intake entries"}, status=status.HTTP_403_FORBIDDEN,
+                    {"error": "Guests can only delete their own intake entries"},
+                    status=status.HTTP_403_FORBIDDEN,
                 )
 
         # Check the issue status

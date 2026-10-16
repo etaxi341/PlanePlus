@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 from django.conf import settings
 from django.db import DatabaseError, transaction
 from django.http import JsonResponse
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.exceptions import APIException, PermissionDenied
@@ -30,6 +31,7 @@ from plane.db.models import (
     User,
     Workspace,
     WorkspaceMember,
+    FileAsset,
 )
 from plane.license.api.permissions.instance import InstanceAdminPermission
 from plane.utils.act_as import content_author
@@ -100,7 +102,10 @@ def act_as_content(action, resource_type, fields, scope="project"):
             original = view.request
             try:
                 view.request = proxy
-                with content_author(context if request.method not in SAFE_METHODS else None):
+                with (
+                    timezone.override(context.target.user_timezone),
+                    content_author(context if request.method not in SAFE_METHODS else None),
+                ):
                     return handler(view, proxy, *args, **kwargs)
             finally:
                 view.request = original
@@ -189,6 +194,8 @@ def resolve_act_as(request, view, operation):
     workspace = authorize_act_as_actor(request, view.kwargs.get("slug"))
     if operation is None:
         raise ActAsError("act_as_operation_not_supported", "Impersonation is not supported for this operation.")
+    if request.method not in SAFE_METHODS and not isinstance(request.data, dict):
+        raise ActAsError("act_as_invalid_payload", "A JSON object is required.", 400)
     reason = request.headers.get(REASON_HEADER, "")
     if len(reason) > 500 or any(char in reason for char in "\r\n\x00"):
         raise ActAsError(
@@ -205,14 +212,38 @@ def resolve_act_as(request, view, operation):
     if membership is None:
         raise ActAsError("act_as_target_not_workspace_member", "The target is not an active workspace member.")
     project_id = view.kwargs.get("project_id")
+    bound_asset = None
+    asset_issue_id = None
+    if operation.resource_type == "generic_asset":
+        if view.kwargs.get("asset_id"):
+            bound_asset = FileAsset.objects.filter(id=view.kwargs["asset_id"], workspace=workspace).first()
+            if bound_asset is None:
+                raise ActAsError("act_as_resource_forbidden", "The asset is not available in this workspace.")
+            project_id = bound_asset.project_id
+            asset_issue_id = bound_asset.issue_id
+        elif request.method not in SAFE_METHODS:
+            project_id = request.data.get("project_id")
+        if request.method == "PATCH" and request.data.get("issue_id"):
+            new_issue_id = parse_uuid(request.data["issue_id"])
+            new_issue = Issue.objects.filter(id=new_issue_id, workspace=workspace).first() if new_issue_id else None
+            if new_issue is None or (project_id and new_issue.project_id != project_id):
+                raise ActAsError("act_as_resource_forbidden", "The work item is not available to bind this asset.")
+            project_id, asset_issue_id = new_issue.project_id, new_issue.id
+        if project_id is not None and parse_uuid(project_id) is None:
+            raise ActAsError("act_as_invalid_payload", "project_id must be a UUID.", 400)
     if operation.resource_type == "project":
         project_id = project_id or view.kwargs.get("pk")
+    project_lookup = (
+        {"identifier": view.kwargs["project_identifier"]}
+        if project_id is None and view.kwargs.get("project_identifier")
+        else {"id": project_id}
+    )
     project = Project.objects.filter(
-        id=project_id,
+        **project_lookup,
         workspace=workspace,
         archived_at__isnull=True,
     ).first()
-    if project is None and operation.scope != "workspace":
+    if project is None and (operation.scope != "workspace" or project_id is not None):
         raise ActAsError("act_as_resource_forbidden", "The resource is not available in this workspace.")
     if project is not None and operation.scope != "join":
         project_member = ProjectMember.objects.filter(project=project, member=target, is_active=True).first()
@@ -224,15 +255,32 @@ def resolve_act_as(request, view, operation):
 
     # Existing permission classes run against this facade after resolution.
     # Bind ALL URL resources before a handler can use a less-scoped lookup.
-    issue_id = view.kwargs.get("issue_id")
+    issue_id = view.kwargs.get("issue_id") or asset_issue_id
     resource_id = view.kwargs.get("pk") or view.kwargs.get("asset_id")
+    if view.kwargs.get("project_identifier") and project is not None:
+        try:
+            sequence_id = int(view.kwargs.get("issue_identifier", ""))
+        except (ValueError, TypeError):
+            raise ActAsError("act_as_invalid_identifier", "The work item number must be an integer.", 400)
+        issue_id = (
+            Issue.issue_objects.filter(project=project, workspace=workspace, sequence_id=sequence_id)
+            .values_list(
+                "id",
+                flat=True,
+            )
+            .first()
+        )
+        if issue_id is None:
+            raise ActAsError("act_as_resource_forbidden", "The work item is not available in this project.")
+        resource_id = issue_id
     if operation.resource_type == "issue" and resource_id:
         issue_id = resource_id
     if issue_id:
         include_archived = request.method == "PATCH" and "archived_at" in request.data
         issue_manager = (
             Issue.objects
-            if operation.resource_type in {"intake_issue", "inline_asset"} or include_archived
+            if operation.resource_type in {"intake_issue", "inline_asset", "file_asset", "generic_asset"}
+            or include_archived
             else Issue.issue_objects
         )
         if operation.resource_type == "inline_asset":
@@ -246,7 +294,7 @@ def resolve_act_as(request, view, operation):
             and project_membership.role == ROLE.GUEST.value
             # Intake ownership lives on IntakeIssue; inline reads validate the
             # source body's visibility in their handler, including triage items.
-            and operation.resource_type not in {"intake_issue", "inline_asset"}
+            and operation.resource_type not in {"intake_issue", "inline_asset", "file_asset", "generic_asset"}
             and not project.guest_view_all_features
             and issue.created_by_id != target.id
         ):
@@ -378,18 +426,28 @@ class ActAsAPIMixin:
         for (module, name, method), operation in REGISTRY.items():
             if (module, name) != (cls.__module__, cls.__name__) or method == "HEAD":
                 continue
-            handler = getattr(cls, method.lower(), None)
-            if handler is not None and not getattr(handler, "act_as_operation", None):
-                setattr(
-                    cls,
-                    method.lower(),
-                    act_as_content(
-                        operation.action,
-                        operation.resource_type,
-                        operation.fields,
-                        operation.scope,
-                    )(handler),
-                )
+            names = (method.lower(),)
+            if getattr(cls, method.lower(), None) is None:
+                names = {
+                    "GET": ("list", "retrieve"),
+                    "POST": ("create",),
+                    "PUT": ("update",),
+                    "PATCH": ("partial_update",),
+                    "DELETE": ("destroy",),
+                }.get(method, ())
+            for handler_name in names:
+                handler = getattr(cls, handler_name, None)
+                if handler is not None and not getattr(handler, "act_as_operation", None):
+                    setattr(
+                        cls,
+                        handler_name,
+                        act_as_content(
+                            operation.action,
+                            operation.resource_type,
+                            operation.fields,
+                            operation.scope,
+                        )(handler),
+                    )
 
     def perform_authentication(self, request):
         super().perform_authentication(request)

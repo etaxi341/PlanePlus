@@ -1,6 +1,13 @@
 # Sichere API-Impersonation in PlanePlus
 
-## Vertrag Version 3
+## Vertrag Version 4
+
+Version 4 repariert den vollständigen Attachment-Ablauf einschließlich Gast-/Intake-
+Uploads und `is_uploaded: true`, ergänzt persönliche generische Uploads mit sicherer
+Ticketbindung, Work-Item-GET per Identifier, persönliche Stickies und Cycle-Transfers.
+Rechteprüfungen verwenden die Zielidentität statt zusätzlicher pauschaler Member-
+Sperren. Die Zeitzone des Zielbenutzers gilt auch für die Content-Verarbeitung.
+Keine zusätzliche Migration oder Aktivierungsvariable erforderlich.
 
 Version 3 ergänzt das optionale Intake-Enddatum (`issue.target_date`) und
 ticketgebundene Inlinebild-GETs mit signierten HTTPS-URLs. Keine neue Datenbankmigration
@@ -10,7 +17,8 @@ oder zusätzliche Aktivierungsvariable ist dafür erforderlich. Weiterhin gilt
 **Inkompatible Änderung gegenüber Version 1:** GET/HEAD mit Delegationsheader lesen
 jetzt als geprüfter Zielbenutzer. Ungültige oder nicht unterstützte Delegation wird
 abgewiesen, niemals ignoriert. Nur OPTIONS bleibt eine identitätsfreie Preflight-Anfrage.
-Ohne Header bleiben vorhandene Endpoints unverändert.
+Ohne Header wird keine Delegation ausgeführt. Die unten beschriebenen Attachment-
+Sichtbarkeitsprüfungen gelten auch für direkte API-Aufrufe.
 
 Version 2 ergänzt Discovery, Email-Auflösung, Public-Project-Join und weitere Content-
 Operationen. Der verbindliche maschinenlesbare Umfang steht unter
@@ -55,7 +63,7 @@ Content-Type: application/json
 - Der Grund ist optional, maximal 500 Zeichen, ohne CR/LF/NUL. Eine Kontext-ID
   kann dort angegeben werden. **Keine Zugangsdaten oder sensiblen Chat-Inhalte hineinlegen.**
 - Eine Begründung ohne Ziel-Header ist ein Fehler, auch bei GET/HEAD.
-- Ohne beide Header bleibt die API unverändert.
+- Ohne beide Header gelten die Rechte des tatsächlichen API-Benutzers.
 - GET/HEAD verwenden dieselbe geprüfte Zielidentität und erzeugen ebenfalls ein Audit.
   HEAD ist nur dort verfügbar, wo die normale Route diese Methode zulässt.
   OPTIONS ignoriert die Header. Nicht freigegebene Leseoperationen liefern 403.
@@ -94,11 +102,14 @@ Ein neuer Kommentar und seine zugehörige Description erhalten dieselbe Autorenz
 ## Unterstützte Endpoints
 
 Lesen mit GET/HEAD: Projektliste/-Lite, Projektdetail/-Summary, Work-Item-Liste/-Detail
-und Suche, Kommentare, Links, Aktivitäten, Attachments sowie die vorhandenen
+und Suche, Work Item per `{project_identifier}-{issue_identifier}`, persönliche
+Stickies, Kommentare, Links, Aktivitäten, Attachments sowie die vorhandenen
 States-, Labels-, Cycles-, Modules-, Estimates-, Intakes- und Mitglieder-Leseoperationen.
 Workspace-Mitgliederdaten bleiben an die normalen Rechte des Zielbenutzers gebunden.
-Aggregierte Content-Ansichten (z. B. Cycles/Modules/Summaries) benötigen Projektrolle
-Member/Admin; Gäste erhalten keine indirekten Details über versteckte Work Items.
+Gäste mit `guest_view_all_features=true` dürfen auch Cycles/Modules lesen. Ohne
+diese Sichtbarkeit sind deren ungefilterte Aggregate gesperrt, auch ohne Act-as;
+so werden versteckte Tickets nicht indirekt offengelegt. Summaries behalten ihre
+normale Workspace-Adminprüfung. States/Labels haben keine zusätzliche Act-as-Rollensperre.
 Die Suche und Work-Item-/Kommentarlisten filtern die Sichtbarkeit des Zielbenutzers.
 Private Projekte sind ohne Zielmitgliedschaft gesperrt; öffentliche Projektmetadaten
 können entsprechend der vorhandenen Projekt-API auch vor einem Join gelesen werden.
@@ -121,28 +132,32 @@ Alle folgenden Pfade beginnen mit `/api/v1/workspaces/{slug}/projects/{project_i
 | POST/PATCH/DELETE | `cycles/`, `cycles/{id}/`                                 | Cycles erstellen/bearbeiten/löschen                       |
 | POST/DELETE       | `cycles/{id}/archive/`, `archived-cycles/{id}/unarchive/` | Cycle archivieren/wiederherstellen                        |
 | POST/DELETE       | Cycle-Work-Item-Endpoints                                 | Work Items zuordnen/entfernen                             |
+| POST              | `cycles/{id}/transfer-issues/`                            | Unvollständige Work Items mit `new_cycle_id` übertragen   |
 | POST/PATCH/DELETE | `modules/`, `modules/{id}/`                               | Modules erstellen/bearbeiten/löschen                      |
 | POST/DELETE       | Module-Archive-Endpoints                                  | Module archivieren/wiederherstellen                       |
 | POST/DELETE       | Module-Work-Item-Endpoints                                | Work Items zuordnen/entfernen                             |
 | POST/PATCH/DELETE | `estimates/` und Estimate-Points-Endpoints                | Estimates/Points nach vorhandenem API-Vertrag             |
-| POST/PATCH/DELETE | `intake-issues/`, `intake-issues/{issue_id}/`             | Initialisierten Intake verwenden                          |
+| POST/PATCH/DELETE | `intake-issues/`, `intake-issues/{issue_id}/`             | Aktivierten Intake verwenden                              |
 | POST              | `work-items/{item_id}/relations/`                         | Beziehungen innerhalb desselben Projekts erstellen        |
 | POST/PATCH/DELETE | Work-Item-Attachment-Endpoints                            | Upload-URL anlegen, Upload bestätigen, Attachment löschen |
 | POST              | `join/`                                                   | Zielbenutzer tritt öffentlichem Projekt bei               |
 
 Zusätzlich: PATCH des Projektdetails unter `projects/{project_id}/` für `name`,
 `description`, `description_text`, `logo_props`, ausschließlich als berechtigter
-Ziel-Projektadministrator. Keine Network-, Rollen- oder Rechteänderung.
+Ziel-Projektadministrator oder Workspace-Admin mit aktiver Projektmitgliedschaft.
+Keine Network-, Rollen- oder Rechteänderung.
+Workspaceweit außerdem `POST assets/`, `GET/PATCH assets/{asset_id}/` sowie
+`GET/POST stickies/`, `GET/PATCH/PUT/DELETE stickies/{id}/` für eigene Notizen.
 Die genauen Routen, Methoden und Feldlisten liefert der Capabilities-Endpoint;
 Django-Pfadkonverter wie `<uuid:project_id>` sind als Platzhalter zu ersetzen.
 
 Die bestehenden `issues/`-Aliasrouten derselben Handler unterstützen diese
-Operationen ebenfalls. PUT/Upsert bleibt **nicht freigegeben**.
+Operationen ebenfalls. Work-Item-PUT/Upsert bleibt **nicht freigegeben**.
 
 Pages haben in diesem Fork keine öffentliche REST-Schreib-API. Sessionbasierte
 Page-Endpoints werden nicht zweckentfremdet. Ebenfalls ausgeschlossen sind Token-,
 Benutzer-, Rollen-, Passwort- und Workspace-Verwaltung, Projekterstellung/-löschung,
-Projekt-Privacy-/Rechteänderungen, Einladungen, Cycle-Transfer, Module-Links und
+Projekt-Privacy-/Rechteänderungen, Einladungen, Module-Links und
 andere nicht explizit freigegebene Methoden/Endpoints. Dateien sind nur als
 Work-Item-Attachments freigegeben, nicht als Benutzeravatar oder Workspace-Logo.
 Mit Delegationsheader werden solche bestehenden Operationen mit HTTP 403
@@ -163,7 +178,8 @@ abgewiesen, nicht stillschweigend als Administrator ausgeführt.
   `target_date` ist optional (`YYYY-MM-DD`), fehlt es, bleibt das Enddatum bei PATCH
   unverändert. `null` entfernt es; ungültige Daten liefern 400. Das Datum wird im
   bestehenden Ticketfeld gespeichert und bleibt nach Annahme des Intakes erhalten.
-  Intake und Triage-State müssen bereits initialisiert sein; Delegation aktiviert
+  Das Intake-Feature muss bereits aktiviert sein; fehlender Standard-Intake und
+  Triage-State werden beim ersten Eintrag initialisiert. Delegation aktiviert
   keine Projektfeatures. Auch aktive Projektgäste dürfen Einträge erstellen,
   einschließlich optionalem Enddatum bei der Erstellung. Gäste können an eigenen
   Einträgen nur Name und Beschreibung bearbeiten und nur eigene Einträge löschen;
@@ -171,13 +187,15 @@ abgewiesen, nicht stillschweigend als Administrator ausgeführt.
   Gastsichtbarkeit entspricht `guest_view_all_features`: andernfalls nur eigene
   Intake-Einträge (Ersteller des Intake-Eintrags, nicht ein importierter Ticketautor).
   Auch bei Sichtbarkeit aller Einträge sind fremde Einträge nicht als Gast bearbeitbar.
-- Attachment-Erstellung: `name`, `type`, `size`; Bestätigung und Löschung ohne Bodyfelder.
+- Attachment-Erstellung: `name`, `type`, `size`, optional `external_id`, `external_source`.
+  Bestätigung mit `{"is_uploaded":true}` (bestehendes `{}` bleibt gültig), Löschung mit `{}`.
   Der Speicher-Upload selbst geschieht danach über die vorhandene signierte URL,
   nicht über eine neue Impersonation-API. Keine Admin-/Act-as-Header an Storage weiterleiten.
 - Weitere genaue Feldlisten: `operations[].fields` der Capabilities-Antwort.
 
 Insbesondere keine `created_by`, `updated_by`, `actor`, `created_at`,
-`deleted_at`, Workspace-/Projekt-/Work-Item-Zuordnungen im Body senden.
+`deleted_at` oder beliebige Workspace-/Projekt-/Work-Item-Zuordnungen im Body senden.
+Ausnahme: geprüfte `project_id`/`issue_id` bei generischen Content-Uploads, siehe unten.
 Nicht freigegebene Felder liefern HTTP 400. Bestehende Serializer validieren
 die normalen Inhalte und Beziehungen; der Header ersetzt keinen Validator.
 
@@ -215,7 +233,7 @@ GET /api/v1/workspaces/{slug}/act-as-users/resolve/?email=user%40example.com
 
 Beide Discovery-Endpunkte verwenden den echten Admin-Key **ohne** Act-as-Header,
 sind workspacegebunden und funktionieren auch bei deaktiviertem Feature.
-Capabilities liefert `version: 3`, `enabled`, Headernamen, `reads_as_target`,
+Capabilities liefert `version: 4`, `enabled`, Headernamen, `reads_as_target`,
 `public_project_join` sowie eine explizite `operations`-Liste mit Methoden, Pfaden,
 Ressourcentypen und Feldern. `enabled: false` sperrt sämtliche Delegation unabhängig
 von der beschriebenen grundsätzlichen Unterstützung.
@@ -258,6 +276,67 @@ Zum Entfernen nur `{"issue":{"target_date":null}}` per PATCH senden. Das Ergebni
 steht unter `issue_detail.target_date`. Normale Schreibrechte bleiben erforderlich;
 Gäste können das Enddatum bestehender Intakes nicht ändern. Capabilities meldet
 `intake_target_date: true`.
+
+## Anhänge: vollständiger Upload-Ablauf
+
+Aktive Projektgäste dürfen Dateien an sichtbare Work Items und Intake-Tickets
+anhängen. Bei eingeschränkter Gastsichtbarkeit zählt bei Triage-Tickets der
+Ersteller des Intake-Eintrags, nicht ein gegebenenfalls importierter Ticketautor.
+Alle Dateitypen sind erlaubt, z. B. PDF, ZIP und E-Mail als `.eml` (`message/rfc822`).
+`size` muss eine positive Bytezahl innerhalb von `FILE_SIZE_LIMIT` sein; ungültige
+Größen liefern 400 vor dem Signieren und vor dem Anlegen eines Uploads.
+
+### Direkt an ein bestehendes Ticket
+
+1. Mit Admin-Key und Act-as-Headern `POST` an
+   `/api/v1/workspaces/{slug}/projects/{project_id}/work-items/{issue_id}/attachments/`:
+
+   ```json
+   { "name": "nachricht.eml", "type": "message/rfc822", "size": 12345 }
+   ```
+
+2. HTTP 200 liefert `asset_id` und `upload_data: {url,fields}`. Die Datei **nicht**
+   als JSON/Base64 an Plane senden: einen separaten `multipart/form-data`-POST an
+   `upload_data.url` durchführen, alle zurückgegebenen `fields` unverändert als
+   Formfelder übernehmen und die echten Dateibytes als letztes Feld `file` anhängen.
+   MIME-Typ unverändert übernehmen; den Multipart-Boundary vom HTTP-Client erzeugen
+   lassen. **Keine API-Key-/Act-as-/Authorization-Header an Storage senden.**
+3. Erst nach erfolgreichem Storage-Upload `PATCH` an
+   `.../attachments/{asset_id}/` mit `{"is_uploaded":true}` und den Plane-Headern.
+   HTTP 204 bestätigt den Upload. Die Bestätigung überprüft nicht synchron den
+   Storage-Inhalt; Metadaten werden über den bestehenden Hintergrundtask ermittelt.
+4. `GET .../attachments/` listet bestätigte Anhänge; `GET .../attachments/{asset_id}/`
+   liefert 302 auf den Download. Storage-Download wiederum ohne Plane-Header.
+   Audit-/Target-Header stehen auf der ursprünglichen Plane-Antwort. Mit
+   `DELETE .../attachments/{asset_id}/` wird der Anhang nach normalen Zielrechten gelöscht.
+
+### Erst hochladen, dann einem Ticket zuordnen
+
+- `POST /api/v1/workspaces/{slug}/assets/` mit denselben Dateimetadaten und optional
+  `project_id`. Ohne Projekt bleibt der Upload zunächst persönlich und ungebunden.
+- Datei wie oben über `upload_data` hochladen, danach
+  `PATCH /api/v1/workspaces/{slug}/assets/{asset_id}/` mit
+  `{"is_uploaded":true,"issue_id":"ISSUE_UUID"}`. Bestätigung und Bindung können
+  auch in getrennten PATCH-Aufrufen erfolgen.
+- Nur der ursprüngliche Uploader darf binden; Ziel-Ticket und Projekt müssen
+  sichtbar sein. Keine Verschiebung zwischen Projekten oder von bereits gebundenen
+  Dateien zu anderen Tickets. Fremde ungebundene Uploads bleiben gesperrt.
+- `GET .../assets/{asset_id}/` liefert für hochgeladene zulässige Anhänge
+  `{asset_id,asset_url,asset_name,asset_type}`. Nach Bindung gelten bei jedem Zugriff
+  dieselben Ticket-/Gastregeln wie am Attachment-Endpoint. Avatare, Page-/Inline-
+  Assets sind über diesen Content-Pfad nicht freigegeben.
+
+Upload-Policies/Download-URLs sind vertrauliche Bearer-Zugänge. Antworten sind
+`private, no-store` und im API-Body-Log redigiert. Der reguläre S3/MinIO-Transport
+und dessen bestehende Ablaufzeit bleiben erhalten; produktiven Storage über HTTPS
+bereitstellen. Die strikte HTTPS-/300-Sekunden-Regel unten gilt für Inlinebilder.
+Fehlende Storage-URLs liefern 503 (`asset_storage_unavailable`) statt eines
+scheinbar erfolgreichen Uploads. Der MCP-Client muss alle drei Schritte implementieren;
+die bloße Erstellung von Dateimetadaten lädt noch keine Datei hoch.
+
+Capabilities enthält `attachments` mit `guest_uploads`, `intake_uploads`,
+`generic_uploads`, `confirmation_field:"is_uploaded"`, `generic_bind_field:"issue_id"`
+und `transfer:"presigned_multipart_post"` sowie die konkreten Routen unter `operations`.
 
 ## Private Inlinebilder aus Ticket-Bodies
 
@@ -421,6 +500,10 @@ docker compose -f docker-compose-test.yml run --rm --build api-tests pytest \
 Die Tests installieren den echten PostgreSQL-Auditschutz auch unter dem bestehenden
 `--nomigrations`-Testmodus. Nur für pytest-Teardown wird der Testdatenbank-Trigger entfernt.
 Paralleltests verwenden getrennte Datenbankverbindungen und echte HTTP-Testclients.
+Attachment-Tests vergleichen direkte und delegierte Aufrufe für Rollen 5/15/20,
+prüfen Objektbindung, Gastgrenzen, Widerruf und Audit-Rollback. Ein lokaler HTTP-
+Storage-Empfänger testet reale Dateibytes mit echtem boto3-Signer und Multipart-POST.
+Dies ersetzt keinen Deployment-Test gegen den tatsächlich eingesetzten S3/MinIO.
 
 Neue Schreiboperationen explizit mit `act_as_content` registrieren, zulässige Felder,
 Ressourcenbindung und normale Objektberechtigungen prüfen, gegebenenfalls die enge

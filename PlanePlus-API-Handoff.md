@@ -1,4 +1,31 @@
-# PlanePlus Act-as: Übergabe an den MCP-Client (Vertrag v3)
+# PlanePlus Act-as: Übergabe an den MCP-Client (Vertrag v4)
+
+## Neu: Anhänge inklusive Gast-/Intake-Uploads
+
+1. Mit Admin-Key + Act-as `POST .../projects/{project_id}/work-items/{issue_id}/attachments/`
+   mit `{"name":"nachricht.eml","type":"message/rfc822","size":12345}`.
+   Dateitypen sind nicht auf Bilder beschränkt; positive Bytezahl bis `FILE_SIZE_LIMIT`.
+2. Antwort `upload_data: {url,fields}` + `asset_id`: separaten Multipart-POST an
+   `url` senden, **alle** `fields` unverändert und die Datei als letztes Formfeld
+   `file` übertragen. **Keine Plane-/Admin-/Act-as-Header an Storage schicken.**
+3. Nach erfolgreichem Transfer mit Plane-Headern
+   `PATCH .../attachments/{asset_id}/`, Body `{"is_uploaded":true}` → 204.
+   Metadaten-POST allein lädt noch keine Dateibytes hoch.
+4. Liste über `GET .../attachments/`, Download über `GET .../attachments/{asset_id}/`
+   (302 mit Audit-/Target-Headern); Storage-Datei ohne Plane-Header herunterladen.
+   Löschen über `DELETE .../attachments/{asset_id}/`.
+
+Alternativ vorab persönlich hochladen: `POST .../workspaces/{slug}/assets/` mit
+Dateimetadaten und optional `project_id`; gleicher Multipart-Transfer. Anschließend
+`PATCH .../assets/{asset_id}/` mit `{"is_uploaded":true,"issue_id":"ISSUE_UUID"}`.
+Nur der Uploader darf binden; keine fremden Uploads oder Projekt-/Ticketwechsel.
+`GET .../assets/{asset_id}/` liefert `{asset_id,asset_url,asset_name,asset_type}`.
+
+Gäste benötigen aktive Workspace-/Projektmitgliedschaft und Ticket-Sichtbarkeit;
+Intake-Zugriff richtet sich bei Triage nach dem Intake-Ersteller. Der Admin verleiht
+keine Zusatzrechte. Discovery liefert `attachments` und `version:4`. Für diesen
+vollständigen Ablauf Version **mindestens 4** prüfen und das Backend aktualisieren.
+MCP muss den dreistufigen Upload selbst ausführen. Keine neue Migration/Variable.
 
 ## Neu: Intake-Enddatum und private Inlinebilder
 
@@ -22,7 +49,7 @@ Der echte Administrator verleiht dem Zielgast keine zusätzlichen Rechte.
 - Asset muss aktuell im sichtbaren Ticket-/Kommentar-Body als Bild referenziert und
   korrekt zugeordnet sein. Kein Ausweichen auf generische Asset-/Admin-Endpunkte.
   Bei 403/404/503 niemals als Admin ohne Zielheader wiederholen.
-- Discovery meldet `version:3`, `intake_target_date:true`, `ticket_inline_assets`
+- Discovery meldet `version:4`, `intake_target_date:true`, `ticket_inline_assets`
   sowie die tatsächlichen Methoden/Routen. Es bleibt bei `PLANEPLUS_ENABLE_ACT_AS=1`;
   kein neues Environment-Flag. Das aktualisierte Backend muss deployed sein.
 
@@ -32,7 +59,7 @@ den **persönlichen API-Key des tatsächlichen Administrators** in `X-API-Key`.
 ## Ablauf pro verifiziertem Chat-Benutzer
 
 1. **Ohne Act-as-Header:** `GET /api/v1/workspaces/{slug}/act-as-capabilities/`.
-   `version >= 3` und `enabled: true` für die neuen Funktionen prüfen. `operations` nennt die tatsächlich
+   `version >= 4` und `enabled: true` für die neuen Funktionen prüfen. `operations` nennt die tatsächlich
    freigegebenen Methoden, Pfade und Body-Felder. Pfadkonverter ersetzen.
 2. **Ohne Act-as-Header:**
    `GET /api/v1/workspaces/{slug}/act-as-users/resolve/?email={urlencoded-email}`.
@@ -58,12 +85,15 @@ den **persönlichen API-Key des tatsächlichen Administrators** in `X-API-Key`.
 - Kommentare/Links: Erstellung, Bearbeitung, Löschung nach Zielbenutzerrechten.
 - States, Labels, Cycles, Modules: CRUD; Cycle-/Module-Archivierung und Work-Item-Zuordnungen.
 - Estimates und Estimate-Points; Erstellen von Points über `{"estimate_points":[...]}`.
-- Initialisierte Intakes, Relations im selben Projekt, Work-Item-Attachment-Lifecycle.
-- Projektmetadaten als berechtigter Projektadmin; keine Privacy-/Rollenänderungen.
+- Aktivierte Intakes (Standard-Intake/Triage wird nötigenfalls initialisiert), Relations im selben Projekt.
+- Vollständiger Work-Item-/Intake-Attachment-Lifecycle und persönliche generische Uploads.
+- Cycle-Transfers (`new_cycle_id`), Work-Item-GET per Identifier, eigene Stickies inklusive PUT.
+- Projektmetadaten als berechtigter Projekt- oder Workspace-Admin mit Projektmitgliedschaft;
+  keine Privacy-/Rollenänderungen.
 - Passende GET/HEAD-Operationen und Suche/Mitgliederlisten, gemäß Capabilities.
 
 **Noch keine vollständige MCP-Parität:** Keine Projekterstellung/-löschung,
-Einladungen/Rechtevergaben, Cycle-Transfers, Module-Links, PUT/Upsert oder Pages.
+Einladungen/Rechtevergaben, Module-Links, Work-Item-PUT/Upsert oder Pages.
 Nicht angegebene Operationen werden explizit abgewiesen. Das Feature ist weiterhin
 standardmäßig aus und wird mit `PLANEPLUS_ENABLE_ACT_AS=1` aktiviert.
 
