@@ -53,6 +53,15 @@ from plane.utils.openapi import (
 )
 
 
+def filter_guest_intakes(queryset, user, project):
+    """Match the app's intake visibility, using the intake entry's creator."""
+    if not project.guest_view_all_features and ProjectMember.objects.filter(
+        project=project, workspace=project.workspace, member=user, is_active=True, role=5,
+    ).exists():
+        return queryset.filter(created_by=user)
+    return queryset
+
+
 class IntakeIssueListCreateAPIEndpoint(BaseAPIView):
     """Intake Work Item List and Create Endpoint"""
 
@@ -73,7 +82,7 @@ class IntakeIssueListCreateAPIEndpoint(BaseAPIView):
         if intake is None or not project.intake_view:
             return IntakeIssue.objects.none()
 
-        return (
+        queryset = (
             IntakeIssue.objects.filter(
                 Q(snoozed_till__gte=timezone.now()) | Q(snoozed_till__isnull=True),
                 workspace__slug=self.kwargs.get("slug"),
@@ -83,6 +92,7 @@ class IntakeIssueListCreateAPIEndpoint(BaseAPIView):
             .select_related("issue", "workspace", "project")
             .order_by(self.kwargs.get("order_by", "-created_at"))
         )
+        return filter_guest_intakes(queryset, self.request.user, project)
 
     @intake_docs(
         operation_id="get_intake_work_items_list",
@@ -252,7 +262,7 @@ class IntakeIssueDetailAPIEndpoint(BaseAPIView):
         if intake is None or not project.intake_view:
             return IntakeIssue.objects.none()
 
-        return (
+        queryset = (
             IntakeIssue.objects.filter(
                 Q(snoozed_till__gte=timezone.now()) | Q(snoozed_till__isnull=True),
                 workspace__slug=self.kwargs.get("slug"),
@@ -262,6 +272,7 @@ class IntakeIssueDetailAPIEndpoint(BaseAPIView):
             .select_related("issue", "workspace", "project")
             .order_by(self.kwargs.get("order_by", "-created_at"))
         )
+        return filter_guest_intakes(queryset, self.request.user, project)
 
     @intake_docs(
         operation_id="retrieve_intake_work_item",
@@ -492,6 +503,14 @@ class IntakeIssueDetailAPIEndpoint(BaseAPIView):
             project_id=project_id,
             intake_id=intake.id,
         )
+
+        # Guests may remove their own submissions, not somebody else's accepted
+        # entry (which otherwise bypasses the issue-deletion permission below).
+        if ProjectMember.objects.filter(project=project, member=request.user, is_active=True, role=5).exists():
+            if intake_issue.created_by_id != request.user.id or intake_issue.issue.created_by_id != request.user.id:
+                return Response(
+                    {"error": "Guests can only delete their own intake entries"}, status=status.HTTP_403_FORBIDDEN,
+                )
 
         # Check the issue status
         if intake_issue.status in [-2, -1, 0, 2]:

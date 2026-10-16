@@ -227,6 +227,7 @@ def validate_read_scope(request, view, target, project, operation):
         "issue_link",
         "file_asset",
         "inline_asset",
+        "intake_issue",
     }:
         if not db.ProjectMember.objects.filter(project=project, member=target, is_active=True, role__gte=15).exists():
             raise ActAsError("act_as_target_permission_denied", "This resource requires project member access.")
@@ -254,6 +255,17 @@ def validate_read_scope(request, view, target, project, operation):
             issue_id=view.kwargs.get("issue_id"),
             entity_type=db.FileAsset.EntityTypeContext.ISSUE_ATTACHMENT,
         )
+    if operation.resource_type == "intake_issue" and view.kwargs.get("issue_id"):
+        intake_issue = db.IntakeIssue.objects.filter(
+            workspace=project.workspace,
+            project=project,
+            issue_id=view.kwargs["issue_id"],
+        ).first()
+        if intake_issue is None:
+            raise ActAsError("act_as_resource_forbidden", "The work item is not in this intake.")
+        if not project.guest_view_all_features and intake_issue.created_by_id != target.id:
+            if db.ProjectMember.objects.filter(project=project, member=target, is_active=True, role=5).exists():
+                raise ActAsError("act_as_target_permission_denied", "The target cannot read this intake work item.")
 
 
 def validate_url_scope(view, workspace, project, operation):
@@ -293,14 +305,16 @@ def validate_write_scope(request, view, target, workspace, project, operation):
                 entity_type=db.FileAsset.EntityTypeContext.ISSUE_ATTACHMENT,
             )
     if operation.resource_type == "intake_issue":
-        if not db.ProjectMember.objects.filter(project=project, member=target, is_active=True, role__gte=15).exists():
-            raise ActAsError("act_as_target_permission_denied", "Intake writes require project member access.")
+        member = db.ProjectMember.objects.filter(project=project, member=target, is_active=True).first()
+        if member is None:
+            raise ActAsError("act_as_target_permission_denied", "Intake writes require active project membership.")
         nested = request.data.get("issue", {})
         allowed = {"name", "description_html", "priority", "target_date"}
         if not isinstance(nested, dict) or set(nested) - allowed:
             raise ActAsError(
                 "act_as_fields_not_supported",
-                "Intake issue only supports name, description_html, priority, target_date.", 400,
+                "Intake issue only supports name, description_html, priority, target_date.",
+                400,
             )
         if not project.intake_view or not db.Intake.objects.filter(project=project, workspace=workspace).exists():
             raise ActAsError("act_as_resource_forbidden", "Intake must already be enabled and initialized.")
@@ -308,15 +322,33 @@ def validate_write_scope(request, view, target, workspace, project, operation):
             raise ActAsError("act_as_resource_forbidden", "The intake triage state must already exist.")
         if request.data.get("duplicate_to"):
             scoped_object(db.Issue, request.data["duplicate_to"], workspace, project)
-        if (
-            view.kwargs.get("issue_id")
-            and not db.IntakeIssue.objects.filter(
-                workspace=workspace,
-                project=project,
-                issue_id=view.kwargs["issue_id"],
-            ).exists()
-        ):
-            raise ActAsError("act_as_resource_forbidden", "The work item is not in this intake.")
+        if view.kwargs.get("issue_id"):
+            intake_issue = (
+                db.IntakeIssue.objects.filter(
+                    workspace=workspace,
+                    project=project,
+                    issue_id=view.kwargs["issue_id"],
+                )
+                .select_related("issue")
+                .first()
+            )
+            if intake_issue is None:
+                raise ActAsError("act_as_resource_forbidden", "The work item is not in this intake.")
+            if member.role == 5:
+                if intake_issue.created_by_id != target.id:
+                    raise ActAsError(
+                        "act_as_target_permission_denied", "Guests can only change their own intake entries."
+                    )
+                if request.method == "PATCH" and (
+                    set(request.data) - {"issue"} or set(nested) - {"name", "description_html"}
+                ):
+                    raise ActAsError(
+                        "act_as_target_permission_denied", "Guests can only edit their intake name and description."
+                    )
+                if request.method == "DELETE" and intake_issue.issue.created_by_id != target.id:
+                    raise ActAsError(
+                        "act_as_target_permission_denied", "Guests can only delete their own intake work items."
+                    )
     if operation.resource_type == "estimate_point" and request.method == "POST":
         points = request.data.get("estimate_points")
         if (

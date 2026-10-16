@@ -244,6 +244,9 @@ def resolve_act_as(request, view, operation):
         if (
             project_membership is not None
             and project_membership.role == ROLE.GUEST.value
+            # Intake ownership lives on IntakeIssue; inline reads validate the
+            # source body's visibility in their handler, including triage items.
+            and operation.resource_type not in {"intake_issue", "inline_asset"}
             and not project.guest_view_all_features
             and issue.created_by_id != target.id
         ):

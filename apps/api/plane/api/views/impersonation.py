@@ -18,6 +18,7 @@ from plane.app.permissions import ROLE
 from plane.db.models import (
     ImpersonationAudit,
     FileAsset,
+    IntakeIssue,
     Issue,
     IssueComment,
     Project,
@@ -86,10 +87,19 @@ def check_provenance_access(request, workspace, project_id, issue_id, include_in
     issue = issues.select_related("state").filter(id=issue_id, project_id=project_id, workspace=workspace).first()
     if member is None or issue is None:
         raise PermissionDenied()
-    if include_intake and issue.state and issue.state.group == "triage" and member.role < ROLE.MEMBER.value:
-        raise PermissionDenied()
+    owner_id = issue.created_by_id
+    if include_intake and issue.state and issue.state.group == "triage":
+        intake_issue = IntakeIssue.objects.filter(
+            workspace=workspace,
+            project_id=project_id,
+            issue=issue,
+            intake__deleted_at__isnull=True,
+        ).first()
+        if not member.project.intake_view or intake_issue is None:
+            raise PermissionDenied()
+        owner_id = intake_issue.created_by_id
     if member.role == ROLE.GUEST.value and not member.project.guest_view_all_features:
-        if issue.created_by_id != request.user.id:
+        if owner_id != request.user.id:
             raise PermissionDenied()
     return member
 

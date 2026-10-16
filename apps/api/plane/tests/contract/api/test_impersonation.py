@@ -976,12 +976,12 @@ def test_join_audit_failure_rolls_back_membership_and_preferences(team, monkeypa
     assert not db_models.ProjectUserProperty.objects.filter(project=project, user=team.target).exists()
 
 
-@pytest.mark.parametrize("family", ["states", "labels", "cycles", "modules", "estimates", "intake-issues"])
+@pytest.mark.parametrize("family", ["states", "labels", "cycles", "modules", "estimates"])
 def test_expanded_writes_never_borrow_the_admins_project_rights(team, family):
     ProjectMember.objects.filter(project=team.project, member=team.target).update(role=5)
     WorkspaceMember.objects.filter(workspace=team.workspace, member=team.target).update(role=5)
     url = f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/{family}/"
-    data = {"issue": {"name": "No escalation"}} if family == "intake-issues" else {"name": "No escalation"}
+    data = {"name": "No escalation"}
     response = client_for(team.token).post(url, data, format="json", **headers(team.target))
     assert response.status_code == 403, response.content
     assert not audit_for(response).succeeded
@@ -1305,6 +1305,171 @@ def test_inline_asset_audit_does_not_leak_internal_comment_images_to_guests(team
     assert guest.get(detail).status_code == 403
     listed = guest.get(f"{items(team)}{team.issue.id}/act-as-provenance/")
     assert listed.status_code == 200 and not listed.data["results"]
+
+
+@pytest.fixture
+def guest_intake(team, intake_url):
+    WorkspaceMember.objects.filter(workspace=team.workspace, member=team.target).update(role=5)
+    ProjectMember.objects.filter(project=team.project, member=team.target).update(role=5)
+    Project.objects.filter(id=team.project.id).update(guest_view_all_features=False)
+    return intake_url
+
+
+def guest_intake_client(team, delegated):
+    token = team.token if delegated else APIToken.objects.create(user=team.target)
+    return client_for(token), headers(team.target) if delegated else {}
+
+
+def submit_intake(team, url, target, name):
+    response = client_for(team.token).post(url, {"issue": {"name": name}}, format="json", **headers(target))
+    assert response.status_code == 201, response.content
+    return db_models.IntakeIssue.objects.get(id=response.data["id"])
+
+
+@pytest.mark.parametrize("delegated", [False, True])
+def test_guest_can_submit_intake_with_optional_due_date_and_correct_authorship(team, guest_intake, delegated):
+    if delegated:
+        ProjectMember.objects.filter(project=team.project, member=team.admin).delete(soft=False)
+    client, extra = guest_intake_client(team, delegated)
+    response = client.post(
+        guest_intake,
+        {"issue": {"name": "Guest submission", "priority": "low", "target_date": "2026-12-15"}},
+        format="json",
+        **extra,
+    )
+    assert response.status_code == 201, response.content
+    entry = db_models.IntakeIssue.objects.select_related("issue").get(id=response.data["id"])
+    assert entry.created_by_id == entry.issue.created_by_id == team.target.id
+    assert entry.issue.target_date.isoformat() == "2026-12-15"
+    assert entry.issue.priority == "low"
+    assert ProjectMember.objects.get(project=team.project, member=team.target).role == 5
+    if delegated:
+        audit = audit_for(response)
+        assert audit.succeeded and audit.actor_id == team.admin.id and audit.target_user_id == team.target.id
+        assert audit.resource_id == entry.id
+    else:
+        assert AUDIT_HEADER not in response
+
+
+@pytest.mark.parametrize("delegated", [False, True])
+@pytest.mark.parametrize("view_all", [False, True])
+def test_guest_intake_read_visibility_matches_existing_project_setting(team, guest_intake, delegated, view_all):
+    own = submit_intake(team, guest_intake, team.target, "Guest's own")
+    foreign = submit_intake(team, guest_intake, team.other, "Other user's submission")
+    Project.objects.filter(id=team.project.id).update(guest_view_all_features=view_all)
+    client, extra = guest_intake_client(team, delegated)
+    listed = client.get(guest_intake, **extra)
+    assert listed.status_code == 200, listed.content
+    actual = {str(entry["id"]) for entry in listed.data["results"]}
+    assert actual == ({str(own.id), str(foreign.id)} if view_all else {str(own.id)})
+    assert client.get(f"{guest_intake}{own.issue_id}/", **extra).status_code == 200
+    other = client.get(f"{guest_intake}{foreign.issue_id}/", **extra)
+    assert other.status_code == (200 if view_all else 403 if delegated else 404)
+    if delegated:
+        assert audit_for(other).succeeded is view_all
+
+
+@pytest.mark.parametrize("delegated", [False, True])
+def test_guest_can_edit_own_intake_name_and_description_but_not_another_authors(team, guest_intake, delegated):
+    own = submit_intake(team, guest_intake, team.target, "Guest's draft")
+    foreign = submit_intake(team, guest_intake, team.other, "Other draft")
+    Project.objects.filter(id=team.project.id).update(guest_view_all_features=True)
+    client, extra = guest_intake_client(team, delegated)
+    updated = client.patch(
+        f"{guest_intake}{own.issue_id}/",
+        {"issue": {"name": "Guest edited", "description_html": "<p>My update</p>"}},
+        format="json",
+        **extra,
+    )
+    assert updated.status_code == 200, updated.content
+    own.issue.refresh_from_db()
+    assert own.issue.name == "Guest edited" and own.issue.updated_by_id == team.target.id
+    denied = client.patch(f"{guest_intake}{foreign.issue_id}/", {"issue": {"name": "Not mine"}}, format="json", **extra)
+    assert denied.status_code in (400, 403)
+    foreign.issue.refresh_from_db()
+    assert foreign.issue.name == "Other draft"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"status": 1},
+        {"status": -1, "issue": {"name": "Atomic denial"}},
+        {"snoozed_till": None},
+        {"issue": {"target_date": "2026-12-15"}},
+        {"issue": {"priority": "urgent"}},
+    ],
+)
+def test_delegated_guest_cannot_borrow_admin_triage_or_content_edit_rights(team, guest_intake, payload):
+    own = submit_intake(team, guest_intake, team.target, "Keep original")
+    response = client_for(team.token).patch(
+        f"{guest_intake}{own.issue_id}/", payload, format="json", **headers(team.target)
+    )
+    assert response.status_code == 403, response.content
+    assert not audit_for(response).succeeded
+    own.refresh_from_db()
+    own.issue.refresh_from_db()
+    assert own.status == -2 and own.issue.name == "Keep original" and own.issue.target_date is None
+
+
+@pytest.mark.parametrize("delegated", [False, True])
+@pytest.mark.parametrize("accepted", [False, True])
+def test_guest_can_delete_own_intake_but_not_foreign_entries_even_after_acceptance(
+    team, guest_intake, delegated, accepted
+):
+    own = submit_intake(team, guest_intake, team.target, "Own removal")
+    foreign = submit_intake(team, guest_intake, team.other, "Foreign removal")
+    if accepted:
+        db_models.IntakeIssue.objects.filter(id__in=[own.id, foreign.id]).update(status=1)
+    Project.objects.filter(id=team.project.id).update(guest_view_all_features=True)
+    client, extra = guest_intake_client(team, delegated)
+    denied = client.delete(f"{guest_intake}{foreign.issue_id}/", {}, format="json", **extra)
+    assert denied.status_code == 403, denied.content
+    assert db_models.IntakeIssue.objects.filter(id=foreign.id).exists()
+    deleted = client.delete(f"{guest_intake}{own.issue_id}/", {}, format="json", **extra)
+    assert deleted.status_code == 204, deleted.content
+    assert not db_models.IntakeIssue.objects.filter(id=own.id).exists()
+    assert Issue.objects.filter(id=own.issue_id).exists() is accepted
+
+
+@pytest.mark.parametrize("scope", ["workspace", "project"])
+def test_guest_intake_act_as_requires_active_membership_in_both_scopes(team, guest_intake, scope):
+    if scope == "workspace":
+        WorkspaceMember.objects.filter(workspace=team.workspace, member=team.target).update(is_active=False)
+    else:
+        ProjectMember.objects.filter(project=team.project, member=team.target).update(is_active=False)
+    response = client_for(team.token).post(
+        guest_intake, {"issue": {"name": "No inactive access"}}, format="json", **headers(team.target)
+    )
+    assert response.status_code == 403
+    assert not Issue.objects.filter(name="No inactive access").exists()
+
+
+def test_guest_intake_visibility_uses_intake_creator_not_imported_issue_author(team, guest_intake):
+    entry = submit_intake(team, guest_intake, team.target, "Imported authorship")
+    Issue.objects.filter(id=entry.issue_id).update(created_by=team.other)
+    response = client_for(team.token).get(f"{guest_intake}{entry.issue_id}/", **headers(team.target))
+    assert response.status_code == 200, response.content
+
+
+def test_guest_can_read_inline_images_on_visible_intakes_but_not_hidden_tickets(team, guest_intake, inline_image):
+    # Rebind the fixture image to an actual guest intake submission and exercise
+    # the same body ownership rules as the guest's intake detail/list.
+    own = submit_intake(team, guest_intake, team.target, "Guest image submission")
+    Issue.objects.filter(id=own.issue_id).update(description_html=team.issue.description_html)
+    db_models.FileAsset.objects.filter(id=inline_image.asset.id).update(issue_id=own.issue_id)
+    url = f"{items(team)}{own.issue_id}/inline-assets/{inline_image.asset.id}/"
+    client = client_for(team.token)
+    assert client.get(url, **headers(team.target)).status_code == 302
+    db_models.IntakeIssue.objects.filter(id=own.id).update(created_by=team.other)
+    assert client.get(url, **headers(team.target)).status_code == 403
+    Project.objects.filter(id=team.project.id).update(guest_view_all_features=True)
+    assert client.get(url, **headers(team.target)).status_code == 302
+    # Reading a foreign regular ticket must not become possible as a side effect.
+    Project.objects.filter(id=team.project.id).update(guest_view_all_features=False)
+    Issue.objects.filter(id=team.issue.id).update(created_by=team.other)
+    db_models.FileAsset.objects.filter(id=inline_image.asset.id).update(issue=team.issue)
+    assert client.get(inline_image.url, **headers(team.target)).status_code == 403
 
 
 @pytest.mark.django_db(transaction=True)

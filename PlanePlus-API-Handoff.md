@@ -2,6 +2,12 @@
 
 ## Neu: Intake-Enddatum und private Inlinebilder
 
+**Gast-Intakes:** Aktive Workspace-/Projektgäste (Rolle 5) dürfen auch mit Act-as
+Intake-Einträge erstellen. Listen/Details beachten `guest_view_all_features`, sonst
+sind nur eigene Einträge sichtbar. Bearbeiten als Gast: nur eigener Name/Beschreibung;
+keine Triage-/Status-, Prioritäts- oder Enddatumsänderung. Löschen nur eigener Einträge.
+Der echte Administrator verleiht dem Zielgast keine zusätzlichen Rechte.
+
 - Optionales Enddatum unter `issue.target_date` bei Intake-POST/PATCH, Format
   `YYYY-MM-DD`; `null` entfernt das Datum. Ohne Feld bleibt ein vorhandenes Datum
   bei PATCH unverändert. Lesbar unter `issue_detail.target_date`.

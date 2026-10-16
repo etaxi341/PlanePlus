@@ -164,7 +164,13 @@ abgewiesen, nicht stillschweigend als Administrator ausgeführt.
   unverändert. `null` entfernt es; ungültige Daten liefern 400. Das Datum wird im
   bestehenden Ticketfeld gespeichert und bleibt nach Annahme des Intakes erhalten.
   Intake und Triage-State müssen bereits initialisiert sein; Delegation aktiviert
-  keine Projektfeatures. Schreibzugriff benötigt Projektrolle Member/Admin.
+  keine Projektfeatures. Auch aktive Projektgäste dürfen Einträge erstellen,
+  einschließlich optionalem Enddatum bei der Erstellung. Gäste können an eigenen
+  Einträgen nur Name und Beschreibung bearbeiten und nur eigene Einträge löschen;
+  keine Status-/Triage-, Prioritäts- oder Enddatumsänderungen per Gast-PATCH.
+  Gastsichtbarkeit entspricht `guest_view_all_features`: andernfalls nur eigene
+  Intake-Einträge (Ersteller des Intake-Eintrags, nicht ein importierter Ticketautor).
+  Auch bei Sichtbarkeit aller Einträge sind fremde Einträge nicht als Gast bearbeitbar.
 - Attachment-Erstellung: `name`, `type`, `size`; Bestätigung und Löschung ohne Bodyfelder.
   Der Speicher-Upload selbst geschieht danach über die vorhandene signierte URL,
   nicht über eine neue Impersonation-API. Keine Admin-/Act-as-Header an Storage weiterleiten.
@@ -293,7 +299,8 @@ Das unveränderbare Audit speichert Ressourcen-/Actor-IDs, nicht die signierte U
 Sicherheitsprüfungen:
 
 - Aktiver Workspace-/Projektzugriff und die normalen Ticket-/Gastregeln des Zielbenutzers.
-  Keine archivierten Tickets/Projekte oder Drafts; Intake-Bilder benötigen Member-/Adminrechte.
+  Keine archivierten Tickets/Projekte oder Drafts; für Intake-Bilder gelten dieselben
+  Gast-/Erstellerregeln wie für den Intake-Eintrag und die zusätzliche Kommentarsichtbarkeit.
 - Asset ist hochgeladen, nicht gelöscht/archiviert und gehört exakt zu Workspace/Projekt.
 - Nur `ISSUE_DESCRIPTION` mit passender Ticket-ID oder `COMMENT_DESCRIPTION` mit
   einem aktuellen Kommentar desselben Tickets; keine Pages, Avatare oder Attachments.
