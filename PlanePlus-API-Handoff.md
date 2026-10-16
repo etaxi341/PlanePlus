@@ -1,4 +1,24 @@
-# PlanePlus Act-as: Übergabe an den MCP-Client (Vertrag v2)
+# PlanePlus Act-as: Übergabe an den MCP-Client (Vertrag v3)
+
+## Neu: Intake-Enddatum und private Inlinebilder
+
+- Optionales Enddatum unter `issue.target_date` bei Intake-POST/PATCH, Format
+  `YYYY-MM-DD`; `null` entfernt das Datum. Ohne Feld bleibt ein vorhandenes Datum
+  bei PATCH unverändert. Lesbar unter `issue_detail.target_date`.
+- `GET /api/v1/workspaces/{slug}/projects/{project_id}/work-items/{issue_id}/inline-assets/{asset_id}/?redirect=false`
+  mit denselben Admin-Key-/Act-as-Headern wie der Body-GET. Ticketroute unterstützt
+  Beschreibungs- und Kommentarbilder. Optional explizit:
+  `.../work-items/{issue_id}/comments/{comment_id}/inline-assets/{asset_id}/`.
+- JSON: `{asset_id,url,expires_in}`. `url` ist signiert, HTTPS und höchstens 300 Sekunden gültig.
+  Bilddaten anschließend **ohne API-Key/Act-as-Header** vom Storage herunterladen.
+- Ohne `redirect=false`: 302 mit signiertem `Location`; Audit-/Target-Header stehen
+  auf dieser 302-Antwort, nicht notwendigerweise auf der danach geladenen Storage-Antwort.
+- Asset muss aktuell im sichtbaren Ticket-/Kommentar-Body als Bild referenziert und
+  korrekt zugeordnet sein. Kein Ausweichen auf generische Asset-/Admin-Endpunkte.
+  Bei 403/404/503 niemals als Admin ohne Zielheader wiederholen.
+- Discovery meldet `version:3`, `intake_target_date:true`, `ticket_inline_assets`
+  sowie die tatsächlichen Methoden/Routen. Es bleibt bei `PLANEPLUS_ENABLE_ACT_AS=1`;
+  kein neues Environment-Flag. Das aktualisierte Backend muss deployed sein.
 
 Die vier priorisierten API-Lücken sind implementiert. Die folgenden Requests verwenden
 den **persönlichen API-Key des tatsächlichen Administrators** in `X-API-Key`.
@@ -6,7 +26,7 @@ den **persönlichen API-Key des tatsächlichen Administrators** in `X-API-Key`.
 ## Ablauf pro verifiziertem Chat-Benutzer
 
 1. **Ohne Act-as-Header:** `GET /api/v1/workspaces/{slug}/act-as-capabilities/`.
-   `version >= 2` und `enabled: true` prüfen. `operations` nennt die tatsächlich
+   `version >= 3` und `enabled: true` für die neuen Funktionen prüfen. `operations` nennt die tatsächlich
    freigegebenen Methoden, Pfade und Body-Felder. Pfadkonverter ersetzen.
 2. **Ohne Act-as-Header:**
    `GET /api/v1/workspaces/{slug}/act-as-users/resolve/?email={urlencoded-email}`.

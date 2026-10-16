@@ -10,10 +10,19 @@ from plane.api.views.impersonation import (
     ActAsCapabilitiesEndpoint,
     ActAsUserResolveEndpoint,
     PublicProjectJoinEndpoint,
+    WorkItemInlineAssetEndpoint,
 )
 
 
 urlpatterns = [
+    path(
+        "workspaces/<str:slug>/projects/<uuid:project_id>/work-items/<uuid:issue_id>/inline-assets/<uuid:asset_id>/",
+        WorkItemInlineAssetEndpoint.as_view(http_method_names=["get", "head"]), name="work-item-inline-asset",
+    ),
+    path(
+        "workspaces/<str:slug>/projects/<uuid:project_id>/work-items/<uuid:issue_id>/comments/<uuid:comment_id>/inline-assets/<uuid:asset_id>/",
+        WorkItemInlineAssetEndpoint.as_view(http_method_names=["get", "head"]), name="comment-inline-asset",
+    ),
     path(
         "workspaces/<str:slug>/act-as-capabilities/",
         ActAsCapabilitiesEndpoint.as_view(http_method_names=["get"]),

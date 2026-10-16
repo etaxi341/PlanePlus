@@ -1,6 +1,11 @@
 # Sichere API-Impersonation in PlanePlus
 
-## Vertrag Version 2
+## Vertrag Version 3
+
+Version 3 ergänzt das optionale Intake-Enddatum (`issue.target_date`) und
+ticketgebundene Inlinebild-GETs mit signierten HTTPS-URLs. Keine neue Datenbankmigration
+oder zusätzliche Aktivierungsvariable ist dafür erforderlich. Weiterhin gilt
+`PLANEPLUS_ENABLE_ACT_AS=1` für delegierte Anfragen.
 
 **Inkompatible Änderung gegenüber Version 1:** GET/HEAD mit Delegationsheader lesen
 jetzt als geprüfter Zielbenutzer. Ungültige oder nicht unterstützte Delegation wird
@@ -154,7 +159,10 @@ abgewiesen, nicht stillschweigend als Administrator ausgeführt.
 - Estimate-Points erstellen: `{"estimate_points":[{"key":1,"value":"One"}]}`;
   nicht die alternative rohe Arrayform der headerlosen API. Nested Punkte akzeptieren
   nur `key`, `value`, `description`.
-- Intake-Nutzdaten unter `issue` akzeptieren nur `name`, `description_html`, `priority`.
+- Intake-Nutzdaten unter `issue` akzeptieren `name`, `description_html`, `priority`, `target_date`.
+  `target_date` ist optional (`YYYY-MM-DD`), fehlt es, bleibt das Enddatum bei PATCH
+  unverändert. `null` entfernt es; ungültige Daten liefern 400. Das Datum wird im
+  bestehenden Ticketfeld gespeichert und bleibt nach Annahme des Intakes erhalten.
   Intake und Triage-State müssen bereits initialisiert sein; Delegation aktiviert
   keine Projektfeatures. Schreibzugriff benötigt Projektrolle Member/Admin.
 - Attachment-Erstellung: `name`, `type`, `size`; Bestätigung und Löschung ohne Bodyfelder.
@@ -201,7 +209,7 @@ GET /api/v1/workspaces/{slug}/act-as-users/resolve/?email=user%40example.com
 
 Beide Discovery-Endpunkte verwenden den echten Admin-Key **ohne** Act-as-Header,
 sind workspacegebunden und funktionieren auch bei deaktiviertem Feature.
-Capabilities liefert `version: 2`, `enabled`, Headernamen, `reads_as_target`,
+Capabilities liefert `version: 3`, `enabled`, Headernamen, `reads_as_target`,
 `public_project_join` sowie eine explizite `operations`-Liste mit Methoden, Pfaden,
 Ressourcentypen und Feldern. `enabled: false` sperrt sämtliche Delegation unabhängig
 von der beschriebenen grundsätzlichen Unterstützung.
@@ -230,6 +238,88 @@ Es gibt kein `role`-Argument. Deaktivierte/entfernte Mitgliedschaften werden nic
 wiederhergestellt. Parallele Joins werden mit einer Datenbanksperre serialisiert;
 Mitgliedschaft, Preferences und Audit sind atomar. Ohne Header tritt der echte
 API-Benutzer selbst bei; ohne Adminrechte ist Delegation weiterhin gesperrt.
+
+## Optionales Enddatum bei Intakes
+
+Erstellen per `POST .../intake-issues/`, Bearbeiten per
+`PATCH .../intake-issues/{issue_id}/`, jeweils auch mit Act-as:
+
+```json
+{ "issue": { "name": "Bitte prüfen", "target_date": "2026-12-15" } }
+```
+
+Zum Entfernen nur `{"issue":{"target_date":null}}` per PATCH senden. Das Ergebnis
+steht unter `issue_detail.target_date`. Normale Schreibrechte bleiben erforderlich;
+Gäste können das Enddatum bestehender Intakes nicht ändern. Capabilities meldet
+`intake_target_date: true`.
+
+## Private Inlinebilder aus Ticket-Bodies
+
+```http
+GET /api/v1/workspaces/{slug}/projects/{project_id}/work-items/{issue_id}/inline-assets/{asset_id}/
+GET /api/v1/workspaces/{slug}/projects/{project_id}/work-items/{issue_id}/comments/{comment_id}/inline-assets/{asset_id}/
+```
+
+Diese GET/HEAD-Endpunkte akzeptieren den normalen API-Key und die üblichen
+Act-as-Header. Ohne Header gelten ausschließlich die Rechte des echten Aufrufers;
+es gibt auch für Instance-/Workspace-Admins keinen automatischen Projektzugriff.
+Die Ticketroute kann sowohl Beschreibungs- als auch Kommentarbilder auflösen;
+die zusätzliche Kommentarroute verlangt exakt diesen Kommentar.
+
+Vorgehen für den MCP-Client:
+
+1. Body per normalem delegiertem Ticket-/Kommentar-GET laden.
+2. Asset-UUIDs aus `image-component[src]` bzw. `img[src]` entnehmen.
+3. Obigen ticketgebundenen GET mit denselben Headern und `?redirect=false` aufrufen:
+
+```json
+{ "asset_id": "ASSET_UUID", "url": "https://storage.example/...SIGNATURE...", "expires_in": 300 }
+```
+
+4. Die Bilddaten von dieser URL **ohne API-Key und ohne Act-as-Header** herunterladen.
+
+Ohne `redirect=false` liefert der Endpoint **302** mit der signierten HTTPS-URL
+in `Location`. Auch die ursprüngliche 302-Antwort enthält
+`X-PlanePlus-Act-As-Audit-Id` und `X-PlanePlus-Act-As-User`. Automatisches Folgen
+des Redirects kann diese Header verbergen und darf keine Admin-Header an Storage
+weiterleiten; deshalb ist JSON für MCP-Clients empfohlen.
+
+Die URL ist höchstens 300 Sekunden gültig (bei kürzerer bestehender
+`SIGNED_URL_EXPIRATION` entsprechend kürzer). Sie ist ein Bearer-Zugriffstoken:
+nicht dauerhaft speichern oder weitergeben. Antworten sind `private, no-store`,
+und der bestehende API-Response-Body-Logger speichert die signierte URL nicht.
+Das unveränderbare Audit speichert Ressourcen-/Actor-IDs, nicht die signierte URL.
+
+Sicherheitsprüfungen:
+
+- Aktiver Workspace-/Projektzugriff und die normalen Ticket-/Gastregeln des Zielbenutzers.
+  Keine archivierten Tickets/Projekte oder Drafts; Intake-Bilder benötigen Member-/Adminrechte.
+- Asset ist hochgeladen, nicht gelöscht/archiviert und gehört exakt zu Workspace/Projekt.
+- Nur `ISSUE_DESCRIPTION` mit passender Ticket-ID oder `COMMENT_DESCRIPTION` mit
+  einem aktuellen Kommentar desselben Tickets; keine Pages, Avatare oder Attachments.
+- Aktueller Body enthält eine echte Bildreferenz: UUID im `src` oder kanonische
+  lokale Asset-URL (absolut nur mit konfiguriertem `WEB_URL`-/`APP_BASE_URL`-Origin).
+  Erwähnungen im Text, Links, beliebige URLs und UUID-Teilstrings zählen nicht.
+- Interne Kommentarbilder sind für Gäste nur bei selbst verfassten Kommentaren sichtbar.
+  Entfernte Kommentare oder entfernte Body-Referenzen sperren neue URL-Ausstellungen.
+- Nur unterstützte Rasterbildtypen; insbesondere keine SVG-/HTML-Dateien.
+
+Ungebundene Alt-Uploads ohne passende Ticket-/Kommentarzuordnung werden bewusst
+nicht durch bloße UUID-Kenntnis zugänglich. Historische Bodies werden nicht durchsucht.
+Bereits ausgestellte URLs bleiben bis zu ihrem kurzen Ablauf gültig; sie sind
+keine pro Download erneut geprüfte Proxy-Session.
+
+Der bestehende Storage muss öffentlich per HTTPS erreichbar sein. Bei `USE_MINIO=1`
+wird der öffentliche Request-Host vor dem Signieren mit HTTPS verwendet; Proxy und
+Zertifikat müssen dies unterstützen. Bei sonstigem S3 muss ein benutzerdefinierter
+`AWS_S3_ENDPOINT_URL` bereits HTTPS unterstützen. Eine nachträgliche Umschreibung
+signierter HTTP-URLs findet nicht statt. Fehlendes HTTPS/fehlende Signierung liefert
+503 (`inline_asset_https_unavailable`) ohne `Location`. Audit-Ausfall liefert ebenfalls
+keine URL. Kein Admin-Fallback und kein serverseitiges Abrufen beliebiger Body-URLs.
+
+Capabilities enthält die Routen in `operations` und zusätzlich
+`ticket_inline_assets: {supported:true, https_only:true, max_expires_in:300,
+redirect_status:302, json_query:"redirect=false"}`. Den `enabled`-Wert weiterhin prüfen.
 
 ## Audit und abrufbare Transparenz
 
@@ -315,6 +405,7 @@ immer den neuen Headervertrag verwenden.
 docker compose -f docker-compose-test.yml run --rm --build api-tests pytest \
   plane/tests/contract/api/test_impersonation.py \
   plane/tests/unit/utils/test_act_as_context.py \
+  plane/tests/unit/utils/test_inline_assets.py \
   plane/tests/unit/middleware/test_api_authentication.py \
   plane/tests/unit/views/test_swg_authentication.py \
   plane/tests/unit/views/test_issue_link.py

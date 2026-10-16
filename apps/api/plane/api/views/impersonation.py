@@ -9,10 +9,15 @@ from django.db.models import Q
 
 from django.conf import settings
 from django.db import transaction
+from django.http import HttpResponseRedirect
+from django.utils.cache import patch_vary_headers
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from plane.api.act_as import is_instance_admin, is_workspace_admin, authorize_act_as_actor, act_as_content, ActAsError
 from plane.app.permissions import ROLE
 from plane.db.models import (
     ImpersonationAudit,
+    FileAsset,
     Issue,
     IssueComment,
     Project,
@@ -58,7 +63,7 @@ class ImpersonationAuditSerializer(ImpersonationProvenanceSerializer):
         read_only_fields = fields
 
 
-def check_provenance_access(request, workspace, project_id, issue_id):
+def check_provenance_access(request, workspace, project_id, issue_id, include_intake=False):
     if not WorkspaceMember.objects.filter(workspace=workspace, member=request.user, is_active=True).exists():
         raise PermissionDenied()
     member = (
@@ -68,6 +73,7 @@ def check_provenance_access(request, workspace, project_id, issue_id):
             member=request.user,
             is_active=True,
             project__archived_at__isnull=True,
+            project__deleted_at__isnull=True,
         )
         .select_related("project")
         .first()
@@ -76,8 +82,11 @@ def check_provenance_access(request, workspace, project_id, issue_id):
         if member is None or member.role < ROLE.MEMBER.value:
             raise PermissionDenied()
         return member
-    issue = Issue.issue_objects.filter(id=issue_id, project_id=project_id, workspace=workspace).first()
+    issues = Issue.objects.filter(archived_at__isnull=True, is_draft=False) if include_intake else Issue.issue_objects
+    issue = issues.select_related("state").filter(id=issue_id, project_id=project_id, workspace=workspace).first()
     if member is None or issue is None:
+        raise PermissionDenied()
+    if include_intake and issue.state and issue.state.group == "triage" and member.role < ROLE.MEMBER.value:
         raise PermissionDenied()
     if member.role == ROLE.GUEST.value and not member.project.guest_view_all_features:
         if issue.created_by_id != request.user.id:
@@ -93,6 +102,15 @@ def visible_provenance(queryset, member, user):
             project_id=member.project_id,
         ).values("id")
         queryset = queryset.filter(~Q(resource_type="issue_comment") | Q(resource_id__in=visible_comments))
+        visible_images = FileAsset.objects.filter(
+            Q(entity_type=FileAsset.EntityTypeContext.ISSUE_DESCRIPTION)
+            | Q(entity_type=FileAsset.EntityTypeContext.COMMENT_DESCRIPTION, comment_id__in=visible_comments),
+            project_id=member.project_id,
+            is_uploaded=True,
+            is_deleted=False,
+            is_archived=False,
+        ).values("id")
+        queryset = queryset.filter(~Q(resource_type="inline_asset") | Q(resource_id__in=visible_images))
     return queryset
 
 
@@ -161,6 +179,8 @@ class ActAsCapabilitiesSerializer(serializers.Serializer):
     audit_header = serializers.CharField(read_only=True)
     reads_as_target = serializers.BooleanField(read_only=True)
     public_project_join = serializers.BooleanField(read_only=True)
+    intake_target_date = serializers.BooleanField(read_only=True)
+    ticket_inline_assets = serializers.DictField(read_only=True)
     operations = serializers.ListField(child=serializers.DictField(), read_only=True)
 
 
@@ -190,6 +210,7 @@ class ActAsCapabilitiesEndpoint(BaseAPIView):
         authorize_act_as_actor(request, slug)
         from plane.api.act_as_registry import capabilities
         from django.urls import get_resolver, URLPattern, URLResolver
+        from plane.utils.inline_assets import INLINE_URL_MAX_SECONDS
 
         routes = {}
 
@@ -212,13 +233,21 @@ class ActAsCapabilitiesEndpoint(BaseAPIView):
         operations = [operation for operation in operations if operation["paths"]]
         return Response(
             {
-                "version": 2,
+                "version": 3,
                 "enabled": settings.PLANEPLUS_ENABLE_ACT_AS,
                 "user_header": "X-PlanePlus-Act-As-User",
                 "reason_header": "X-PlanePlus-Act-As-Reason",
                 "audit_header": "X-PlanePlus-Act-As-Audit-Id",
                 "reads_as_target": True,
                 "public_project_join": True,
+                "intake_target_date": True,
+                "ticket_inline_assets": {
+                    "supported": True,
+                    "https_only": True,
+                    "max_expires_in": INLINE_URL_MAX_SECONDS,
+                    "redirect_status": 302,
+                    "json_query": "redirect=false",
+                },
                 "operations": operations,
             }
         )
@@ -332,3 +361,92 @@ class PublicProjectJoinEndpoint(BaseAPIView):
                 },
                 status=201,
             )
+
+
+class SignedInlineAssetSerializer(serializers.Serializer):
+    asset_id = serializers.UUIDField(read_only=True)
+    url = serializers.URLField(read_only=True)
+    expires_in = serializers.IntegerField(read_only=True)
+
+
+class WorkItemInlineAssetEndpoint(BaseAPIView):
+    """Read an uploaded image only through its current, authorized ticket body."""
+
+    serializer_class = SignedInlineAssetSerializer
+    use_read_replica = False
+
+    def dispatch(self, request, *args, **kwargs):
+        response = super().dispatch(request, *args, **kwargs)
+        response["Cache-Control"] = "private, no-store"
+        response["Referrer-Policy"] = "no-referrer"
+        patch_vary_headers(response, ["X-API-Key", "X-PlanePlus-Act-As-User"])
+        # Signed URLs are bearer credentials, not ordinary content to persist
+        # in the existing API-token response-body logger.
+        response.planeplus_sensitive_body = True
+        return response
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                "redirect",
+                OpenApiTypes.BOOL,
+                OpenApiParameter.QUERY,
+                description="Default true: 302; false: JSON with a short-lived signed HTTPS URL.",
+            ),
+            OpenApiParameter("Location", OpenApiTypes.URI, OpenApiParameter.HEADER, response=[302]),
+        ],
+        responses={200: SignedInlineAssetSerializer, 302: OpenApiResponse(description="Signed HTTPS storage redirect")},
+    )
+    def get(self, request, slug, project_id, issue_id, asset_id, comment_id=None):
+        from plane.utils.inline_assets import INLINE_IMAGE_TYPES, body_references_asset, signed_inline_asset_url
+
+        redirect = request.query_params.get("redirect", "true")
+        if redirect not in {"true", "false"}:
+            raise ActAsError("inline_asset_invalid_redirect", "redirect must be true or false.", 400)
+        workspace = Workspace.objects.filter(slug=slug).first()
+        if workspace is None:
+            raise NotFound()
+        check_audit_token_scope(request, workspace)
+        member = check_provenance_access(request, workspace, project_id, issue_id, include_intake=True)
+        asset = FileAsset.objects.filter(
+            id=asset_id,
+            workspace=workspace,
+            project_id=project_id,
+            is_uploaded=True,
+            is_deleted=False,
+            is_archived=False,
+            page_id__isnull=True,
+            draft_issue_id__isnull=True,
+            user_id__isnull=True,
+        ).first()
+        if asset is None:
+            raise NotFound()
+        attributes = asset.attributes if isinstance(asset.attributes, dict) else {}
+        metadata = asset.storage_metadata if isinstance(asset.storage_metadata, dict) else {}
+        content_type = str(metadata.get("ContentType") or attributes.get("type") or "").split(";", 1)[0].lower().strip()
+        if content_type not in INLINE_IMAGE_TYPES:
+            raise PermissionDenied("This asset is not a supported inline image.")
+        if asset.entity_type == FileAsset.EntityTypeContext.ISSUE_DESCRIPTION:
+            if asset.issue_id != issue_id or asset.comment_id is not None or comment_id is not None:
+                raise PermissionDenied("This image does not belong to this ticket description.")
+            body = Issue.objects.get(id=issue_id, project_id=project_id, workspace=workspace).description_html
+        elif asset.entity_type == FileAsset.EntityTypeContext.COMMENT_DESCRIPTION:
+            comment = IssueComment.objects.filter(
+                id=asset.comment_id,
+                issue_id=issue_id,
+                project_id=project_id,
+                workspace=workspace,
+            ).first()
+            if comment is None or asset.issue_id not in {None, issue_id} or (comment_id and comment_id != comment.id):
+                raise PermissionDenied("This image does not belong to a current comment on this ticket.")
+            if member.role == ROLE.GUEST.value and comment.access != "EXTERNAL" and comment.actor_id != request.user.id:
+                raise PermissionDenied("The target cannot read this internal comment.")
+            body = comment.comment_html
+        else:
+            raise PermissionDenied("Only ticket-description and comment-description images are supported.")
+        if not body_references_asset(body, asset):
+            raise PermissionDenied("The current body does not reference this inline image.")
+        url, expires_in = signed_inline_asset_url(request, asset)
+        if redirect == "false":
+            return Response({"asset_id": str(asset.id), "url": url, "expires_in": expires_in})
+        return HttpResponseRedirect(url)

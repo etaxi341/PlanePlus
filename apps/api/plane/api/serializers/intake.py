@@ -27,6 +27,7 @@ class IssueForIntakeSerializer(BaseSerializer):
             "description_json",
             "description_html",
             "priority",
+            "target_date",
         ]
         read_only_fields = [
             "id",
@@ -168,3 +169,4 @@ class IssueDataSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=255, help_text="Issue name")
     description_html = serializers.CharField(required=False, allow_null=True, help_text="Issue description HTML")
     priority = serializers.ChoiceField(choices=Issue.PRIORITY_CHOICES, default="none", help_text="Issue priority")
+    target_date = serializers.DateField(required=False, allow_null=True, help_text="Optional due date (YYYY-MM-DD)")

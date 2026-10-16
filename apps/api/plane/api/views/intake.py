@@ -150,6 +150,9 @@ class IntakeIssueListCreateAPIEndpoint(BaseAPIView):
         if not request.data.get("issue", {}).get("name", False):
             return Response({"error": "Name is required"}, status=status.HTTP_400_BAD_REQUEST)
 
+        payload = IntakeIssueCreateSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+
         intake = Intake.objects.filter(workspace__slug=slug, project_id=project_id).first()
 
         project = Project.objects.get(workspace__slug=slug, pk=project_id)
@@ -200,6 +203,7 @@ class IntakeIssueListCreateAPIEndpoint(BaseAPIView):
             priority=issue_data.get("priority", "none"),
             project_id=project_id,
             state_id=triage_state.id,
+            target_date=payload.validated_data["issue"].get("target_date"),
         )
 
         # create an intake issue
@@ -379,6 +383,10 @@ class IntakeIssueDetailAPIEndpoint(BaseAPIView):
 
             # Only allow guests to edit name and description
             if project_member.role <= 5:
+                if "target_date" in issue_data:
+                    return Response(
+                        {"error": "Only project members can change the due date"}, status=status.HTTP_403_FORBIDDEN,
+                    )
                 description_json = issue_data.get("description") or issue_data.get("description_json") or {}
                 issue_data = {
                     "name": issue_data.get("name", issue.name),

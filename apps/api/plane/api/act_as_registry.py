@@ -55,6 +55,7 @@ register("issue", "IssueActivityListAPIEndpoint IssueActivityDetailAPIEndpoint",
 register("issue", "IssueAttachmentListCreateAPIEndpoint IssueAttachmentDetailAPIEndpoint", "file_asset", "GET HEAD")
 register("issue", "IssueAttachmentListCreateAPIEndpoint", "file_asset", "POST", {"name", "size", "type"})
 register("issue", "IssueAttachmentDetailAPIEndpoint", "file_asset", "PATCH DELETE")
+register("impersonation", "WorkItemInlineAssetEndpoint", "inline_asset", "GET HEAD")
 register("issue", "IssueRelationListCreateAPIEndpoint", "issue_relation", "GET HEAD")
 register("issue", "IssueRelationListCreateAPIEndpoint", "issue_relation", "POST", {"relation_type", "issues"})
 register("issue", "IssueDetailAPIEndpoint", "issue", "DELETE")
@@ -225,6 +226,7 @@ def validate_read_scope(request, view, target, project, operation):
         "issue_comment",
         "issue_link",
         "file_asset",
+        "inline_asset",
     }:
         if not db.ProjectMember.objects.filter(project=project, member=target, is_active=True, role__gte=15).exists():
             raise ActAsError("act_as_target_permission_denied", "This resource requires project member access.")
@@ -294,10 +296,11 @@ def validate_write_scope(request, view, target, workspace, project, operation):
         if not db.ProjectMember.objects.filter(project=project, member=target, is_active=True, role__gte=15).exists():
             raise ActAsError("act_as_target_permission_denied", "Intake writes require project member access.")
         nested = request.data.get("issue", {})
-        allowed = {"name", "description_html", "priority"}
+        allowed = {"name", "description_html", "priority", "target_date"}
         if not isinstance(nested, dict) or set(nested) - allowed:
             raise ActAsError(
-                "act_as_fields_not_supported", "Intake issue only supports name, description_html, priority.", 400
+                "act_as_fields_not_supported",
+                "Intake issue only supports name, description_html, priority, target_date.", 400,
             )
         if not project.intake_view or not db.Intake.objects.filter(project=project, workspace=workspace).exists():
             raise ActAsError("act_as_resource_forbidden", "Intake must already be enabled and initialized.")

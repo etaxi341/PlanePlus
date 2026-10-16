@@ -121,6 +121,7 @@ def act_as_content(action, resource_type, fields, scope="project"):
                     description="Optional audit context/reason for delegation; never send passwords or tokens here.",
                 ),
                 OpenApiParameter(AUDIT_HEADER, OpenApiTypes.UUID, OpenApiParameter.HEADER, response=True),
+                OpenApiParameter(USER_HEADER, OpenApiTypes.UUID, OpenApiParameter.HEADER, response=True),
             ]
         )(wrapped)
 
@@ -224,14 +225,18 @@ def resolve_act_as(request, view, operation):
     # Existing permission classes run against this facade after resolution.
     # Bind ALL URL resources before a handler can use a less-scoped lookup.
     issue_id = view.kwargs.get("issue_id")
-    resource_id = view.kwargs.get("pk")
+    resource_id = view.kwargs.get("pk") or view.kwargs.get("asset_id")
     if operation.resource_type == "issue" and resource_id:
         issue_id = resource_id
     if issue_id:
         include_archived = request.method == "PATCH" and "archived_at" in request.data
         issue_manager = (
-            Issue.objects if operation.resource_type == "intake_issue" or include_archived else Issue.issue_objects
+            Issue.objects
+            if operation.resource_type in {"intake_issue", "inline_asset"} or include_archived
+            else Issue.issue_objects
         )
+        if operation.resource_type == "inline_asset":
+            issue_manager = issue_manager.filter(archived_at__isnull=True, is_draft=False)
         issue = issue_manager.filter(id=issue_id, workspace=workspace, project=project).first()
         if issue is None:
             raise ActAsError("act_as_resource_forbidden", "The work item is not available in this project.")
@@ -346,7 +351,7 @@ def append_audit(request, *, audit_id, response_status, context=None, actor=None
         workspace_id=workspace_id,
         project_id=context.project.id if context and context.project else parse_uuid(url_kwargs.get("project_id")),
         issue_id=context.issue_id if context else parse_uuid(url_kwargs.get("issue_id")),
-        resource_id=context.resource_id if context else parse_uuid(url_kwargs.get("pk")),
+        resource_id=context.resource_id if context else parse_uuid(url_kwargs.get("pk") or url_kwargs.get("asset_id")),
         resource_type=operation.resource_type if operation else "",
         action=operation.action if operation else "act_as.rejected",
         method=request.method,
@@ -439,7 +444,7 @@ class ActAsAPIMixin:
                     response.status_code == 302
                     and request.method in SAFE_METHODS
                     and context is not None
-                    and context.operation.resource_type == "file_asset"
+                    and context.operation.resource_type in {"file_asset", "inline_asset"}
                 )
                 if (200 <= response.status_code < 300 or successful_redirect) and context is not None:
                     # Validate serialization before committing content + audit.

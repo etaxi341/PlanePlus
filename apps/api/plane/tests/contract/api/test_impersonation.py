@@ -660,7 +660,9 @@ def test_capabilities_and_resolver_are_admin_only_and_work_when_disabled(team, s
     client = client_for(team.token)
     response = client.get(f"{base}act-as-capabilities/")
     assert response.status_code == 200, response.content
-    assert response.data["version"] == 2 and response.data["enabled"] is False
+    assert response.data["version"] == 3 and response.data["enabled"] is False
+    assert response.data["intake_target_date"] is True
+    assert response.data["ticket_inline_assets"]["https_only"] is True
     assert response.data["reads_as_target"] and response.data["public_project_join"]
     assert all(operation["paths"] for operation in response.data["operations"])
     for operation in response.data["operations"]:
@@ -1044,6 +1046,265 @@ def test_cycle_and_module_archive_and_restore_keep_resource_audit(team, family):
     assert restored.status_code == 204, restored.content
     obj.refresh_from_db()
     assert obj.archived_at is None and obj.updated_by_id == team.other.id
+
+
+@pytest.fixture
+def intake_url(team):
+    Project.objects.filter(id=team.project.id).update(intake_view=True)
+    db_models.Intake.objects.create(project=team.project, name="Intake", is_default=True)
+    State.objects.create(project=team.project, name="Triage", group="triage", is_triage=True)
+    return f"/api/v1/workspaces/{team.workspace.slug}/projects/{team.project.id}/intake-issues/"
+
+
+@pytest.mark.parametrize("delegated", [False, True])
+@pytest.mark.parametrize("date", ["2026-12-15", None, "omitted"])
+def test_optional_intake_due_date_create_edit_clear(team, intake_url, delegated, date):
+    extra = headers(team.target) if delegated else {}
+    payload = {"name": "Intake with optional date"}
+    if date != "omitted":
+        payload["target_date"] = date
+    client = client_for(team.token)
+    created = client.post(intake_url, {"issue": payload}, format="json", **extra)
+    assert created.status_code == 201, created.content
+    issue = Issue.objects.get(name=payload["name"])
+    assert (issue.target_date.isoformat() if issue.target_date else None) == (
+        date if date not in {None, "omitted"} else None
+    )
+    assert created.data["issue_detail"]["target_date"] == (date if date not in {None, "omitted"} else None)
+    url = f"{intake_url}{issue.id}/"
+    for value in ("2027-01-20", None):
+        edited = client.patch(url, {"issue": {"target_date": value}}, format="json", **extra)
+        assert edited.status_code == 200, edited.content
+        issue.refresh_from_db()
+        assert (issue.target_date.isoformat() if issue.target_date else None) == value
+    if delegated:
+        assert issue.created_by_id == issue.updated_by_id == team.target.id
+        assert audit_for(created).actor_id == team.admin.id
+
+
+@pytest.mark.parametrize("delegated", [False, True])
+@pytest.mark.parametrize("date", ["2026-02-31", "not-a-date", "2026-12-15T12:00:00Z"])
+def test_invalid_intake_due_date_is_rejected_without_content(team, intake_url, delegated, date):
+    extra = headers(team.target) if delegated else {}
+    response = client_for(team.token).post(
+        intake_url, {"issue": {"name": "Invalid date", "target_date": date}}, format="json", **extra
+    )
+    assert response.status_code == 400, response.content
+    assert not Issue.objects.filter(name="Invalid date").exists()
+    if delegated:
+        assert not audit_for(response).succeeded
+
+
+@pytest.fixture
+def inline_image(team, monkeypatch):
+    asset = db_models.FileAsset.objects.create(
+        workspace=team.workspace,
+        project=team.project,
+        issue=team.issue,
+        is_uploaded=True,
+        asset=f"{team.workspace.id}/{uuid4()}.png",
+        entity_type=db_models.FileAsset.EntityTypeContext.ISSUE_DESCRIPTION,
+        attributes={"name": "image.png", "type": "image/png"},
+    )
+    team.issue.description_html = f'<p>Body</p><image-component src="{asset.id}"></image-component>'
+    team.issue.save(created_by_id=team.target.id)
+    storage = Mock()
+    storage.return_value.signed_url_expiration = 3600
+    storage.return_value.generate_presigned_url.return_value = (
+        "https://storage.example/image.png?X-Amz-Signature=secret"
+    )
+    monkeypatch.setattr("plane.utils.inline_assets.S3Storage", storage)
+    return SimpleNamespace(asset=asset, storage=storage, url=f"{items(team)}{team.issue.id}/inline-assets/{asset.id}/")
+
+
+@pytest.mark.parametrize("redirect,expected", [("true", 302), ("false", 200)])
+def test_ticket_inline_image_returns_https_target_and_audit_without_admin_membership(
+    team, inline_image, isolated_act_as, redirect, expected
+):
+    ProjectMember.objects.filter(project=team.project, member=team.admin).delete(soft=False)
+    response = client_for(team.token).get(inline_image.url, {"redirect": redirect}, **headers(team.target))
+    assert response.status_code == expected, response.content
+    assert response["X-PlanePlus-Act-As-User"] == str(team.target.id)
+    assert response["Cache-Control"] == "private, no-store"
+    url = response["Location"] if expected == 302 else response.data["url"]
+    assert url.startswith("https://")
+    entry = audit_for(response)
+    assert entry.succeeded and entry.response_status == expected
+    assert entry.actor_id == team.admin.id and entry.target_user_id == team.target.id
+    assert entry.resource_id == inline_image.asset.id and entry.issue_id == team.issue.id
+    assert entry.resource_type == "inline_asset"
+    inline_image.storage.return_value.generate_presigned_url.assert_called_once()
+    assert inline_image.storage.return_value.generate_presigned_url.call_args.kwargs["expiration"] == 300
+    assert isolated_act_as.logs.call_args.kwargs["log_data"]["response_body"] == "[REDACTED]"
+
+
+def test_inline_image_headerless_reads_use_real_user_not_admin_override(team, inline_image):
+    client = client_for(APIToken.objects.create(user=team.target))
+    assert client.get(inline_image.url).status_code == 302
+    assert not ImpersonationAudit.objects.exists()
+    ProjectMember.objects.filter(project=team.project, member=team.admin).update(is_active=False)
+    assert client_for(team.token).get(inline_image.url).status_code == 403
+
+
+@pytest.mark.parametrize(
+    "body",
+    ["<p>No image</p>", '<a href="{id}">Not an inline image</a>', '<img src="https://evil.example/?asset={id}">'],
+)
+def test_unreferenced_image_cannot_be_read_and_never_falls_back(team, inline_image, body):
+    Issue.objects.filter(id=team.issue.id).update(description_html=body.format(id=inline_image.asset.id))
+    response = client_for(team.token).get(inline_image.url, **headers(team.target))
+    assert response.status_code == 403 and not audit_for(response).succeeded
+    inline_image.storage.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("is_uploaded", False),
+        ("is_deleted", True),
+        ("is_archived", True),
+        ("entity_type", "ISSUE_ATTACHMENT"),
+        ("attributes", {"type": "image/svg+xml"}),
+    ],
+)
+def test_inline_images_reject_unavailable_noninline_or_unsafe_assets(team, inline_image, field, value):
+    db_models.FileAsset.objects.filter(id=inline_image.asset.id).update(**{field: value})
+    response = client_for(team.token).get(inline_image.url, **headers(team.target))
+    assert response.status_code in (403, 404)
+    assert not audit_for(response).succeeded
+    inline_image.storage.assert_not_called()
+
+
+def test_inline_image_binds_ticket_project_workspace_and_active_target(team, inline_image):
+    other_issue = Issue.objects.create(
+        project=team.project, name="Different ticket", description_html=team.issue.description_html
+    )
+    url = f"{items(team)}{other_issue.id}/inline-assets/{inline_image.asset.id}/"
+    client = client_for(team.token)
+    assert client.get(url, **headers(team.target)).status_code == 403
+    foreign_project = Project.objects.create(workspace=team.workspace, name="Other", identifier="OTHER")
+    db_models.FileAsset.objects.filter(id=inline_image.asset.id).update(project=foreign_project)
+    assert client.get(inline_image.url, **headers(team.target)).status_code == 404
+    db_models.FileAsset.objects.filter(id=inline_image.asset.id).update(project=team.project)
+    ProjectMember.objects.filter(project=team.project, member=team.target).update(is_active=False)
+    assert client.get(inline_image.url, **headers(team.target)).status_code == 403
+    inline_image.storage.assert_not_called()
+
+
+def test_comment_inline_image_enforces_comment_binding_and_guest_visibility(team, inline_image):
+    client = client_for(team.token)
+    comment = IssueComment.objects.create(
+        project=team.project,
+        issue=team.issue,
+        workspace=team.workspace,
+        actor=team.other,
+        comment_html=f'<img src="{inline_image.asset.id}">',
+        access="INTERNAL",
+    )
+    db_models.FileAsset.objects.filter(id=inline_image.asset.id).update(
+        entity_type="COMMENT_DESCRIPTION",
+        issue=None,
+        comment=comment,
+    )
+    url = f"{comments(team)}{comment.id}/inline-assets/{inline_image.asset.id}/"
+    assert client.get(url, **headers(team.target)).status_code == 302
+    ProjectMember.objects.filter(project=team.project, member=team.target).update(role=5)
+    assert client.get(url, **headers(team.target)).status_code == 403
+    # The ticket-only route must enforce the same internal-comment rule.
+    assert client.get(inline_image.url, **headers(team.target)).status_code == 403
+    IssueComment.objects.filter(id=comment.id).update(access="EXTERNAL")
+    assert client.get(url, **headers(team.target)).status_code == 302
+    assert client.get(inline_image.url, **headers(team.target)).status_code == 302
+    forged = f"{comments(team)}{uuid4()}/inline-assets/{inline_image.asset.id}/"
+    assert client.get(forged, **headers(team.target)).status_code == 403
+    IssueComment.objects.filter(id=comment.id).delete()
+    assert client.get(url, **headers(team.target)).status_code == 403
+
+
+def test_inline_image_disabled_feature_and_audit_failure_never_return_url(team, inline_image, settings, monkeypatch):
+    client = client_for(team.token)
+    settings.PLANEPLUS_ENABLE_ACT_AS = False
+    response = client.get(inline_image.url, **headers(team.target))
+    assert response.status_code == 403 and "Location" not in response
+    inline_image.storage.assert_not_called()
+    settings.PLANEPLUS_ENABLE_ACT_AS = True
+    monkeypatch.setattr(ImpersonationAudit.objects, "create", Mock(side_effect=IntegrityError("no audit")))
+    response = client.get(inline_image.url, **headers(team.target))
+    assert response.status_code == 503 and "Location" not in response
+
+
+@pytest.mark.parametrize("url", [None, "http://storage.example/image.png?signature=x"])
+def test_inline_image_insecure_storage_has_audited_error_without_location(team, inline_image, url):
+    inline_image.storage.return_value.generate_presigned_url.return_value = url
+    response = client_for(team.token).get(inline_image.url, **headers(team.target))
+    assert response.status_code == 503 and "Location" not in response
+    assert response.data["error_code"] == "inline_asset_https_unavailable"
+    assert not audit_for(response).succeeded and audit_for(response).error_code == "inline_asset_https_unavailable"
+
+
+@pytest.mark.parametrize("delegated", [False, True])
+def test_intake_partial_update_preserves_due_date_and_invalid_patch_cannot_change_it(team, intake_url, delegated):
+    client = client_for(team.token)
+    extra = headers(team.target) if delegated else {}
+    created = client.post(
+        intake_url, {"issue": {"name": "Keep date", "target_date": "2026-12-15"}}, format="json", **extra
+    )
+    assert created.status_code == 201
+    issue = Issue.objects.get(name="Keep date")
+    url = f"{intake_url}{issue.id}/"
+    changed = client.patch(url, {"issue": {"name": "Keep existing date"}}, format="json", **extra)
+    assert changed.status_code == 200
+    invalid = client.patch(url, {"issue": {"target_date": "2026-02-31"}}, format="json", **extra)
+    assert invalid.status_code == 400
+    issue.refresh_from_db()
+    assert issue.target_date.isoformat() == "2026-12-15"
+
+
+def test_inline_image_references_survive_regular_body_api_roundtrip(team, inline_image):
+    client = client_for(team.token)
+    url = f"{items(team)}{team.issue.id}/"
+    html = f'<p>Image</p><image-component src="{inline_image.asset.id}"></image-component>'
+    written = client.patch(url, {"description_html": html}, format="json", **headers(team.target))
+    assert written.status_code == 200, written.content
+    body = client.get(url, **headers(team.target))
+    assert str(inline_image.asset.id) in body.data["description_html"]
+    assert client.get(inline_image.url, **headers(team.target)).status_code == 302
+    comment = client.post(comments(team), {"comment_html": html}, format="json", **headers(team.target))
+    assert comment.status_code == 201, comment.content
+    db_models.FileAsset.objects.filter(id=inline_image.asset.id).update(
+        entity_type="COMMENT_DESCRIPTION", issue=None, comment_id=comment.data["id"]
+    )
+    assert client.get(inline_image.url, **headers(team.target)).status_code == 302
+
+
+def test_inline_head_has_same_audit_and_target_headers(team, inline_image):
+    response = client_for(team.token).head(inline_image.url, **headers(team.target))
+    assert response.status_code == 302 and response.content == b""
+    assert response["X-PlanePlus-Act-As-User"] == str(team.target.id)
+    assert audit_for(response).succeeded and audit_for(response).method == "HEAD"
+
+
+def test_inline_asset_audit_does_not_leak_internal_comment_images_to_guests(team, inline_image):
+    comment = IssueComment.objects.create(
+        project=team.project,
+        workspace=team.workspace,
+        issue=team.issue,
+        actor=team.other,
+        comment_html=team.issue.description_html,
+        access="INTERNAL",
+    )
+    db_models.FileAsset.objects.filter(id=inline_image.asset.id).update(
+        entity_type="COMMENT_DESCRIPTION", issue=None, comment=comment
+    )
+    client = client_for(team.token)
+    read = client.get(inline_image.url, **headers(team.other))
+    assert read.status_code == 302
+    ProjectMember.objects.filter(project=team.project, member=team.target).update(role=5)
+    guest = client_for(APIToken.objects.create(user=team.target))
+    detail = f"/api/v1/workspaces/{team.workspace.slug}/act-as-audit/{read[AUDIT_HEADER]}/"
+    assert guest.get(detail).status_code == 403
+    listed = guest.get(f"{items(team)}{team.issue.id}/act-as-provenance/")
+    assert listed.status_code == 200 and not listed.data["results"]
 
 
 @pytest.mark.django_db(transaction=True)
